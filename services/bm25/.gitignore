@@ -2,6 +2,5 @@
 **/*.rs.bk
 *.pdb
 Cargo.lock
-index/
 data/
 .DS_Store

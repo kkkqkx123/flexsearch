@@ -30,4 +30,7 @@ pub enum Bm25Error {
 
     #[error("Internal error: {0}")]
     InternalError(String),
+
+    #[error("Anyhow error: {0}")]
+    AnyhowError(#[from] anyhow::Error),
 }
