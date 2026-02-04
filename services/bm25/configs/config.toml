@@ -1,0 +1,15 @@
+[server]
+address = "0.0.0.0:50051"
+
+[redis]
+url = "redis://localhost:6379"
+pool_size = 10
+
+[index]
+data_dir = "./data"
+index_path = "./index"
+
+[cache]
+enabled = true
+ttl_seconds = 3600
+max_size = 10000

@@ -1,0 +1,23 @@
+[package]
+name = "bm25-service"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { version = "1.35", features = ["full"] }
+tonic = "0.11"
+prost = "0.12"
+redis = { version = "0.24", features = ["tokio-comp", "connection-manager"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+metrics = "0.22"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tantivy = "0.22"
+anyhow = "1.0"
+thiserror = "1.0"
+toml = "0.8"
+
+[build-dependencies]
+prost-build = "0.12"
+tonic-build = "0.11"
