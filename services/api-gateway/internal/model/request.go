@@ -1,88 +1,156 @@
 package model
 
 type SearchRequest struct {
-    Query   string                 `json:"query" binding:"required,min=1,max=100"`
-    Limit   int                    `json:"limit" binding:"omitempty,min=1,max=100"`
-    Offset  int                    `json:"offset" binding:"omitempty,min=0"`
-    Filters map[string]string        `json:"filters"`
-    Options map[string]interface{}   `json:"options"`
+	Query     string            `json:"query" binding:"required,min=1,max=100"`
+	Indexes   []string          `json:"indexes"`
+	Page      int               `json:"page" binding:"omitempty,min=1"`
+	PageSize  int               `json:"page_size" binding:"omitempty,min=1,max=100"`
+	Filters   map[string]string `json:"filters"`
+	Fields    []string          `json:"fields"`
+	Highlight bool              `json:"highlight"`
+	SortBy    string            `json:"sort_by"`
+	SortOrder string            `json:"sort_order"`
+	Explain   bool              `json:"explain"`
 }
 
 type SearchResponse struct {
-    Results []SearchResult `json:"results"`
-    Total   int          `json:"total"`
-    Latency int          `json:"latency"`
-    Engine  string       `json:"engine"`
+	Results    []SearchResult `json:"results"`
+	Total      int            `json:"total"`
+	Page       int            `json:"page"`
+	PageSize   int            `json:"page_size"`
+	TotalPages int            `json:"total_pages"`
+	TookMs     float64        `json:"took_ms"`
 }
 
 type SearchResult struct {
-    ID       string                 `json:"id"`
-    Score    float64                `json:"score"`
-    Document map[string]interface{}  `json:"document"`
-    Highlight map[string]string      `json:"highlight,omitempty"`
+	ID        string            `json:"id"`
+	Score     float64           `json:"score"`
+	Fields    map[string]string `json:"fields"`
+	Highlights map[string]string `json:"highlights,omitempty"`
 }
 
-type CreateDocumentRequest struct {
-    ID      string                 `json:"id" binding:"required"`
-    Title   string                 `json:"title" binding:"required,min=1,max=200"`
-    Content string                 `json:"content" binding:"required,min=1"`
-    Fields  map[string]interface{}  `json:"fields"`
+type AddDocumentRequest struct {
+	IndexID string            `json:"index_id" binding:"required"`
+	Fields  map[string]string `json:"fields" binding:"required"`
 }
 
-type UpdateDocumentRequest struct {
-    Title   string                 `json:"title" binding:"omitempty,min=1,max=200"`
-    Content string                 `json:"content" binding:"omitempty,min=1"`
-    Fields  map[string]interface{}  `json:"fields"`
+type AddDocumentResponse struct {
+	ID      string `json:"id"`
+	Success bool   `json:"success"`
+	Message string `json:"message,omitempty"`
+}
+
+type GetDocumentRequest struct {
+	IndexID    string `json:"index_id"`
+	DocumentID string `json:"document_id"`
 }
 
 type DocumentResponse struct {
-    ID      string                 `json:"id"`
-    Title   string                 `json:"title"`
-    Content string                 `json:"content"`
-    Fields  map[string]interface{}  `json:"fields"`
-    Created int64                 `json:"created"`
-    Updated int64                 `json:"updated"`
+	ID     string            `json:"id"`
+	Fields map[string]string `json:"fields"`
+	Score  float64           `json:"score,omitempty"`
 }
 
-type BatchDocumentRequest struct {
-    Documents []CreateDocumentRequest `json:"documents" binding:"required,min=1,max=100"`
+type UpdateDocumentRequest struct {
+	IndexID string            `json:"index_id" binding:"required"`
+	Fields  map[string]string `json:"fields" binding:"required"`
 }
 
-type BatchDocumentResponse struct {
-    Success []string `json:"success"`
-    Failed  []string `json:"failed"`
+type UpdateDocumentResponse struct {
+	Success bool   `json:"success"`
+	Message string `json:"message,omitempty"`
+}
+
+type DeleteDocumentRequest struct {
+	IndexID    string `json:"index_id"`
+	DocumentID string `json:"document_id"`
+}
+
+type DeleteDocumentResponse struct {
+	Success bool   `json:"success"`
+	Message string `json:"message,omitempty"`
+}
+
+type BatchDocumentsRequest struct {
+	IndexID   string              `json:"index_id" binding:"required"`
+	Documents []map[string]string `json:"documents" binding:"required,min=1,max=100"`
+	Refresh   bool                `json:"refresh"`
+}
+
+type BatchDocumentsResponse struct {
+	SuccessCount int      `json:"success_count"`
+	FailureCount int      `json:"failure_count"`
+	Errors       []string `json:"errors,omitempty"`
 }
 
 type CreateIndexRequest struct {
-    ID      string                 `json:"id" binding:"required"`
-    Name    string                 `json:"name" binding:"required,min=1,max=100"`
-    Fields  []IndexField           `json:"fields" binding:"required,min=1"`
-    Options map[string]interface{}  `json:"options"`
+	Name      string            `json:"name" binding:"required,min=1,max=100"`
+	IndexType string            `json:"index_type" binding:"required"`
+	Fields    []string          `json:"fields"`
+	Options   map[string]string `json:"options"`
 }
 
-type IndexField struct {
-    Name     string `json:"name" binding:"required"`
-    Type     string `json:"type" binding:"required,oneof=text keyword number date"`
-    Indexed  bool   `json:"indexed"`
-    Stored   bool   `json:"stored"`
+type CreateIndexResponse struct {
+	ID      string `json:"id"`
+	Success bool   `json:"success"`
+	Message string `json:"message,omitempty"`
 }
 
-type IndexResponse struct {
-    ID      string                 `json:"id"`
-    Name    string                 `json:"name"`
-    Fields  []IndexField           `json:"fields"`
-    Options map[string]interface{}  `json:"options"`
-    Status  string                 `json:"status"`
-    Created int64                 `json:"created"`
+type ListIndexesRequest struct {
+	Page     int `json:"page"`
+	PageSize int `json:"page_size"`
+}
+
+type ListIndexesResponse struct {
+	Indexes []IndexInfo `json:"indexes"`
+	Total   int         `json:"total"`
+}
+
+type IndexInfo struct {
+	ID            string `json:"id"`
+	Name          string `json:"name"`
+	IndexType     string `json:"index_type"`
+	DocumentCount int    `json:"document_count"`
+	SizeBytes     int    `json:"size_bytes"`
+	CreatedAt     string `json:"created_at,omitempty"`
+	UpdatedAt     string `json:"updated_at,omitempty"`
+}
+
+type GetIndexRequest struct {
+	IndexID string `json:"index_id"`
+}
+
+type GetIndexResponse struct {
+	Index IndexInfo `json:"index"`
+}
+
+type DeleteIndexRequest struct {
+	IndexID string `json:"index_id"`
+}
+
+type DeleteIndexResponse struct {
+	Success bool   `json:"success"`
+	Message string `json:"message,omitempty"`
+}
+
+type RebuildIndexRequest struct {
+	IndexID string `json:"index_id"`
+	Async   bool   `json:"async"`
+}
+
+type RebuildIndexResponse struct {
+	Success bool   `json:"success"`
+	Message string `json:"message,omitempty"`
+	TaskID  string `json:"task_id,omitempty"`
 }
 
 type ErrorResponse struct {
-    Error   string `json:"error"`
-    Details string `json:"details,omitempty"`
-    Code    int    `json:"code"`
+	Code    string `json:"code"`
+	Message string `json:"message"`
+	Details string `json:"details,omitempty"`
 }
 
 type SuccessResponse struct {
-    Message string `json:"message"`
-    Data    interface{} `json:"data,omitempty"`
+	Message string      `json:"message"`
+	Data    interface{} `json:"data,omitempty"`
 }

@@ -19,14 +19,27 @@ func CORSMiddleware(config CORSConfig) gin.HandlerFunc {
 
         if len(config.AllowOrigins) > 0 {
             allowed := false
-            for _, allowedOrigin := range config.AllowOrigins {
-                if allowedOrigin == "*" || allowedOrigin == origin {
+            var allowedOrigin string
+            for _, allowedOrigin = range config.AllowOrigins {
+                if allowedOrigin == "*" {
+                    allowed = true
+                    break
+                }
+                if allowedOrigin == origin {
                     allowed = true
                     break
                 }
             }
             if allowed {
-                c.Writer.Header().Set("Access-Control-Allow-Origin", origin)
+                if allowedOrigin == "*" {
+                    if origin != "" {
+                        c.Writer.Header().Set("Access-Control-Allow-Origin", origin)
+                    } else {
+                        c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
+                    }
+                } else {
+                    c.Writer.Header().Set("Access-Control-Allow-Origin", origin)
+                }
             }
         } else {
             c.Writer.Header().Set("Access-Control-Allow-Origin", "*")

@@ -6,12 +6,6 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-type IndexHandler struct{}
-
-func NewIndexHandler() *IndexHandler {
-	return &IndexHandler{}
-}
-
 func (h *IndexHandler) Create(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Create index endpoint - not implemented yet",

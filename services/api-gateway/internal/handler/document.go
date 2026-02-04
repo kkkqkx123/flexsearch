@@ -6,12 +6,6 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-type DocumentHandler struct{}
-
-func NewDocumentHandler() *DocumentHandler {
-	return &DocumentHandler{}
-}
-
 func (h *DocumentHandler) Create(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Create document endpoint - not implemented yet",
