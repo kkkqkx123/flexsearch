@@ -1,8 +1,8 @@
-# FlexSearch 中间层架构设计
+# Inversearch 中间层架构设计
 
 ## 一、架构概述
 
-FlexSearch 中间层采用 Go + Rust 混合架构，充分发挥两种语言的优势。Go 用于网络服务和协调层，Rust 用于高性能计算密集型任务。
+Inversearch 中间层采用 Go + Rust 混合架构，充分发挥两种语言的优势。Go 用于网络服务和协调层，Rust 用于高性能计算密集型任务。
 
 ### 1.1 架构图
 
@@ -31,7 +31,7 @@ FlexSearch 中间层采用 Go + Rust 混合架构，充分发挥两种语言的�
              │           │           │
              ▼           ▼           ▼
 ┌─────────────────┐ ┌─────────────┐ ┌─────────────────┐
-│ FlexSearch 服务  │ │ BM25 服务   │ │ 向量搜索服务     │
+│ Inversearch 服务  │ │ BM25 服务   │ │ 向量搜索服务     │
 │ Rust 实现        │ │ Rust 实现    │ │ Rust 实现        │
 │ - 关键词搜索     │ │ - 全文搜索   │ │ - 语义搜索       │
 │ - 模糊匹配       │ │ - BM25 算法  │ │ - 向量检索       │
@@ -44,7 +44,7 @@ FlexSearch 中间层采用 Go + Rust 混合架构，充分发挥两种语言的�
 |------|------|------|
 | API 网关 | Go | 高并发、网络服务、开发效率高 |
 | 查询协调器 | Go | 并发协调、网络通信、逻辑简单 |
-| FlexSearch 服务 | Rust | 计算密集、极致性能、内存安全 |
+| Inversearch 服务 | Rust | 计算密集、极致性能、内存安全 |
 | BM25 服务 | Rust | 算法计算、性能优化、内存安全 |
 | 向量搜索服务 | Rust | 向量计算、SIMD 优化、内存安全 |
 | 插件系统 | Go | 动态加载、生态丰富、开发效率 |
@@ -59,7 +59,7 @@ FlexSearch 中间层采用 Go + Rust 混合架构，充分发挥两种语言的�
 |------|------|------|
 | **API 网关** | Go | 统一入口、认证授权、限流熔断、请求路由 |
 | **查询协调器** | Go | 查询路由、并行执行、结果融合、缓存管理 |
-| **FlexSearch 服务** | Rust | 关键词搜索、模糊匹配、短语搜索、结果高亮 |
+| **Inversearch 服务** | Rust | 关键词搜索、模糊匹配、短语搜索、结果高亮 |
 | **BM25 服务** | Rust | 全文搜索、BM25 算法、词频统计、参数调优 |
 | **向量搜索服务** | Rust | 语义搜索、向量嵌入、混合搜索、HNSW 索引 |
 | **插件系统** | Go | 插件加载、钩子系统、插件管理、配置管理 |
@@ -141,7 +141,7 @@ services/coordinator/
 │   │   ├── rrf.go          # RRF 策略
 │   │   └── weighted.go     # 加权策略
 │   ├── engine/              # 搜索引擎客户端
-│   │   ├── flexsearch.go   # FlexSearch 客户端
+│   │   ├── inversearch.go   # Inversearch 客户端
 │   │   ├── bm25.go         # BM25 客户端
 │   │   └── vector.go       # 向量搜索客户端
 │   ├── cache/               # 缓存管理
@@ -150,7 +150,7 @@ services/coordinator/
 └── proto/                   # gRPC 协议定义
 ```
 
-### 3.3 FlexSearch 服务（Rust）
+### 3.3 Inversearch 服务（Rust）
 
 **核心职责**：
 - 提供高性能的关键词搜索
@@ -170,7 +170,7 @@ services/coordinator/
 
 **目录结构**：
 ```
-services/flexsearch/
+services/inversearch/
 ├── src/
 │   ├── main.rs              # 入口文件
 │   ├── lib.rs               # 库入口
@@ -362,7 +362,7 @@ services/plugin-system/
 
 | 服务 | 存储方案 | 用途 |
 |------|---------|------|
-| FlexSearch 服务 | Redis | 索引存储、缓存 |
+| Inversearch 服务 | Redis | 索引存储、缓存 |
 | BM25 服务 | PostgreSQL | 文档存储、全文搜索 |
 | 向量搜索服务 | Qdrant | 向量存储、向量索引 |
 | 查询协调器 | Redis | 查询缓存 |
@@ -430,7 +430,7 @@ services/plugin-system/
 ### 8.2 服务依赖
 
 ```
-API 网关 → 查询协调器 → FlexSearch 服务 → Redis
+API 网关 → 查询协调器 → Inversearch 服务 → Redis
                               → BM25 服务 → PostgreSQL
                               → 向量搜索服务 → Qdrant
 ```
