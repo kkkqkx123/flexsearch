@@ -1,87 +1,43 @@
-# BM25 服务模块开发计划
+# BM25 服务模块设计
 
 ## 一、模块概述
 
-BM25 服务提供基于 BM25 算法的全文搜索功能，使用 PostgreSQL 作为存储后端，利用其原生全文搜索能力实现高性能的 BM25 搜索。
+BM25 服务是中间层的全文搜索引擎，负责提供基于 BM25 算法的全文搜索功能。该服务使用 Rust 语言实现，利用其高性能计算和内存安全特性，实现高效的倒排索引和 BM25 评分算法。
 
 ---
 
-## 二、功能需求
+## 二、核心功能
 
-### 2.1 核心功能
+### 2.1 功能列表
 
-| 功能 | 描述 | 优先级 |
-|------|------|--------|
-| **文档索引** | 添加、更新、删除文档 | P0 |
-| **BM25 搜索** | 基于 BM25 算法的全文搜索 | P0 |
-| **词频统计** | 统计词频和文档频率 | P0 |
-| **参数调优** | 支持 k1、b 参数调优 | P0 |
-| **批量操作** | 支持批量添加和删除 | P1 |
-| **高亮显示** | 搜索结果高亮 | P1 |
-| **多语言支持** | 支持多种语言的分词 | P2 |
-| **监控指标** | 收集性能指标 | P2 |
+| 功能 | 描述 |
+|------|------|
+| **文档索引** | 添加、更新、删除文档 |
+| **全文搜索** | 基于 BM25 算法的全文搜索 |
+| **字段加权** | 支持字段级别的权重配置 |
+| **缓存管理** | 自动缓存热门查询 |
+| **持久化** | 支持多种持久化后端 |
+| **批量操作** | 支持批量添加和删除 |
+| **高亮显示** | 搜索结果高亮 |
+| **监控指标** | 收集性能指标 |
 
-### 2.2 BM25 算法
+### 2.2 搜索特性
 
-BM25 是一种用于信息检索的概率排序函数，其公式为：
-
-```
-score(D, Q) = Σ IDF(qi) * (f(qi, D) * (k1 + 1)) / (f(qi, D) + k1 * (1 - b + b * |D| / avgdl))
-
-其中：
-- D: 文档
-- Q: 查询
-- qi: 查询中的第 i 个词
-- f(qi, D): 词 qi 在文档 D 中的词频
-- |D|: 文档 D 的长度
-- avgdl: 平均文档长度
-- k1: 词频饱和参数（通常为 1.2-2.0）
-- b: 长度归一化参数（通常为 0.75）
-- IDF(qi): 词 qi 的逆文档频率
-```
-
----
-
-## 三、技术选型
-
-### 3.1 核心依赖
-
-| 依赖 | 版本 | 用途 |
+| 特性 | 支持 | 说明 |
 |------|------|------|
-| **flexsearch/db/postgres** | 0.1.0 | PostgreSQL 客户端 |
-| **@grpc/grpc-js** | 1.10.0 | gRPC 服务 |
-| **redis** | 4.7.0 | 缓存 |
-| **pino** | 8.19.0 | 日志系统 |
-
-### 3.2 依赖库
-
-```json
-{
-  "dependencies": {
-    "flexsearch": "^0.8.200",
-    "@grpc/grpc-js": "^1.10.0",
-    "@grpc/proto-loader": "^0.7.10",
-    "redis": "^4.7.0",
-    "pino": "^8.19.0",
-    "pino-pretty": "^10.3.1",
-    "dotenv": "^16.3.1",
-    "lodash": "^4.17.21"
-  },
-  "devDependencies": {
-    "@types/node": "^20.11.0",
-    "@types/lodash": "^4.14.202",
-    "typescript": "^5.3.3",
-    "jest": "^29.7.0",
-    "@types/jest": "^29.5.11"
-  }
-}
-```
+| **BM25 评分** | ✅ | 基于 BM25 算法的相关性评分 |
+| **字段加权** | ✅ | 支持字段级别的权重配置 |
+| **短语搜索** | ✅ | 支持引号短语 |
+| **布尔查询** | ✅ | AND、OR、NOT |
+| **范围查询** | ✅ | 数值、日期范围 |
+| **模糊匹配** | ✅ | 支持编辑距离模糊匹配 |
+| **同义词扩展** | ✅ | 支持同义词扩展 |
 
 ---
 
-## 四、架构设计
+## 三、架构设计
 
-### 4.1 整体架构
+### 3.1 整体架构
 
 ```
 ┌─────────────────────────────────────────┐
@@ -90,12 +46,12 @@ score(D, Q) = Σ IDF(qi) * (f(qi, D) * (k1 + 1)) / (f(qi, D) + k1 * (1 - b + b *
                │ gRPC
                ▼
 ┌─────────────────────────────────────────┐
-│         BM25 服务               │
+│         BM25 服务                 │
 │  ┌──────────────┬──────────────┐       │
 │  │ 索引管理器   │ 搜索管理器   │       │
 │  └──────────────┴──────────────┘       │
 │  ┌──────────────┬──────────────┐       │
-│  │ 统计管理器   │ 缓存管理器   │       │
+│  │ 评分计算器   │ 缓存管理器   │       │
 │  └──────────────┴──────────────┘       │
 └──────────────┬──────────────────────┘
                │
@@ -103,927 +59,350 @@ score(D, Q) = Σ IDF(qi) * (f(qi, D) * (k1 + 1)) / (f(qi, D) + k1 * (1 - b + b *
         │      │        │
         ▼      ▼        ▼
 ┌──────────┐ ┌──────────┐ ┌──────────┐
-│PostgreSQL│ │  Redis   │ │  文档存储 │
-│ 全文搜索  │ │  缓存    │ │  (可选)  │
+│倒排索引  │ │  Redis   │ │  文档存储 │
+│ 内存索引  │ │  缓存    │ │  (可选)  │
 └──────────┘ └──────────┘ └──────────┘
 ```
 
-### 4.2 目录结构
+### 3.2 目录结构
 
 ```
 services/bm25/
 ├── src/
-│   ├── index.ts                 # 入口文件
-│   ├── server.ts               # gRPC 服务器
-│   ├── config/                 # 配置
-│   │   ├── index.ts
-│   │   └── postgres.ts
-│   ├── index/                  # 索引管理
-│   │   ├── manager.ts
-│   │   └── builder.ts
-│   ├── search/                 # 搜索管理
-│   │   ├── manager.ts
-│   │   └── scorer.ts
-│   ├── stats/                  # 统计管理
-│   │   ├── manager.ts
-│   │   └── calculator.ts
-│   ├── cache/                  # 缓存管理
-│   │   ├── index.ts
-│   │   └── redis.ts
-│   ├── types/                  # 类型定义
-│   │   └── index.ts
-│   └── utils/                  # 工具函数
-│       ├── logger.ts
-│       └── metrics.ts
-├── proto/
-│   └── bm25.proto             # gRPC 协议定义
-├── sql/
-│   ├── 001_init.sql            # 初始化脚本
-│   └── 002_indexes.sql        # 索引脚本
-├── tests/
-│   ├── unit/
-│   └── integration/
-├── package.json
-├── tsconfig.json
+│   ├── main.rs              # 入口文件
+│   ├── lib.rs               # 库入口
+│   ├── config/              # 配置管理
+│   │   ├── mod.rs          # 模块入口
+│   │   └── config.rs       # 配置结构
+│   ├── index/               # 索引管理
+│   │   ├── mod.rs          # 模块入口
+│   │   ├── manager.rs      # 索引管理器
+│   │   ├── builder.rs      # 索引构建器
+│   │   └── inverted.rs     # 倒排索引
+│   ├── search/              # 搜索管理
+│   │   ├── mod.rs          # 模块入口
+│   │   ├── manager.rs      # 搜索管理器
+│   │   └── highlight.rs    # 高亮显示
+│   ├── scorer/              # 评分计算
+│   │   ├── mod.rs          # 模块入口
+│   │   ├── bm25.rs         # BM25 评分
+│   │   └── field.rs        # 字段加权
+│   ├── tokenizer/           # 分词器
+│   │   ├── mod.rs          # 模块入口
+│   │   ├── simple.rs       # 简单分词器
+│   │   └── advanced.rs     # 高级分词器
+│   ├── cache/               # 缓存管理
+│   │   ├── mod.rs          # 模块入口
+│   │   └── redis.rs        # Redis 缓存
+│   ├── storage/             # 持久化
+│   │   ├── mod.rs          # 模块入口
+│   │   └── redis.rs        # Redis 存储
+│   ├── proto/               # gRPC 服务
+│   │   ├── mod.rs          # 模块入口
+│   │   └── service.rs       # gRPC 服务实现
+│   └── model/               # 数据模型
+│       ├── mod.rs          # 模块入口
+│       ├── document.rs     # 文档模型
+│       └── result.rs       # 结果模型
+├── proto/                   # gRPC 协议定义
+│   └── bm25.proto
+├── configs/                 # 配置文件
+│   └── config.toml
+├── Cargo.toml               # Rust 项目配置
 ├── Dockerfile
 └── README.md
 ```
 
 ---
 
-## 五、核心实现
+## 四、模块职责
 
-### 5.1 gRPC 协议定义
+### 4.1 索引管理器
 
-```protobuf
-syntax = "proto3";
+**职责**：
+- 管理倒排索引的创建和更新
+- 处理文档的添加、更新、删除
+- 维护索引的内存结构
+- 支持索引的持久化和恢复
+- 维护词频和文档频率统计
 
-package bm25;
+**主要逻辑**：
+1. 接收文档添加请求
+2. 对文档内容进行分词
+3. 将词项和文档 ID 的映射关系存入倒排索引
+4. 更新词频和文档频率统计
+5. 支持索引的增量更新和全量重建
 
-service BM25Service {
-  rpc AddDocument(AddDocumentRequest) returns (AddDocumentResponse);
-  rpc BatchAddDocuments(BatchAddDocumentsRequest) returns (BatchAddDocumentsResponse);
-  rpc UpdateDocument(UpdateDocumentRequest) returns (UpdateDocumentResponse);
-  rpc RemoveDocument(RemoveDocumentRequest) returns (RemoveDocumentResponse);
-  rpc Search(SearchRequest) returns (SearchResponse);
-  rpc GetStats(StatsRequest) returns (StatsResponse);
-  rpc UpdateParameters(ParametersRequest) returns (ParametersResponse);
-}
+**数据结构**：
+- 倒排索引：词项到文档 ID 列表的映射
+- 词频统计：词项在文档中的出现频率
+- 文档频率统计：包含词项的文档数量
+- 字段统计：字段级别的统计信息
 
-message AddDocumentRequest {
-  string id = 1;
-  string title = 2;
-  string content = 3;
-  map<string, string> metadata = 4;
-}
+### 4.2 搜索管理器
 
-message AddDocumentResponse {
-  bool success = 1;
-  string message = 2;
-}
+**职责**：
+- 处理搜索请求
+- 解析查询语句
+- 在倒排索引中查找匹配的文档
+- 对结果进行排序和截断
 
-message BatchAddDocumentsRequest {
-  repeated Document documents = 1;
-}
+**主要逻辑**：
+1. 接收搜索请求
+2. 对查询进行分词
+3. 在倒排索引中查找每个词项对应的文档
+4. 对多个词项的结果进行交集或并集操作
+5. 调用评分计算器计算相关性分数
+6. 根据分数对结果进行排序
+7. 返回排序后的结果
 
-message BatchAddDocumentsResponse {
-  int32 added = 1;
-  int32 failed = 2;
-  repeated string errors = 3;
-}
+**查询处理**：
+- 短语搜索：支持引号短语
+- 布尔查询：支持 AND、OR、NOT 操作
+- 模糊匹配：支持编辑距离模糊匹配
+- 同义词扩展：支持同义词扩展
 
-message UpdateDocumentRequest {
-  string id = 1;
-  string title = 2;
-  string content = 3;
-  map<string, string> metadata = 4;
-}
+### 4.3 评分计算器
 
-message UpdateDocumentResponse {
-  bool success = 1;
-  string message = 2;
-}
+**职责**：
+- 实现 BM25 评分算法
+- 支持字段级别的权重配置
+- 计算文档的相关性分数
+- 支持自定义评分函数
 
-message RemoveDocumentRequest {
-  string id = 1;
-}
+**主要逻辑**：
+1. 接收文档和查询词
+2. 计算词频（TF）
+3. 计算逆文档频率（IDF）
+4. 应用 BM25 公式计算分数
+5. 应用字段权重
+6. 返回最终分数
 
-message RemoveDocumentResponse {
-  bool success = 1;
-  string message = 2;
-}
-
-message SearchRequest {
-  string query = 1;
-  int32 limit = 2;
-  int32 offset = 3;
-  map<string, string> filters = 4;
-  SearchOptions options = 5;
-}
-
-message SearchOptions {
-  bool enrich = 1;
-  bool highlight = 2;
-  string language = 3;
-}
-
-message SearchResponse {
-  repeated SearchResult results = 1;
-  int32 total = 2;
-  int32 latency = 3;
-  map<string, string> metadata = 4;
-}
-
-message SearchResult {
-  string id = 1;
-  float score = 2;
-  Document doc = 3;
-  repeated string highlights = 4;
-}
-
-message Document {
-  string id = 1;
-  string title = 2;
-  string content = 3;
-  map<string, string> metadata = 4;
-}
-
-message StatsRequest {}
-
-message StatsResponse {
-  int64 document_count = 1;
-  int64 total_terms = 2;
-  float avg_doc_length = 3;
-  BM25Parameters parameters = 4;
-}
-
-message BM25Parameters {
-  float k1 = 1;
-  float b = 2;
-}
-
-message ParametersRequest {
-  float k1 = 1;
-  float b = 2;
-}
-
-message ParametersResponse {
-  bool success = 1;
-  BM25Parameters parameters = 2;
-}
+**BM25 公式**：
+```
+score(D, Q) = Σ IDF(qi) * (f(qi, D) * (k1 + 1)) / (f(qi, D) + k1 * (1 - b + b * |D| / avgdl))
 ```
 
-### 5.2 BM25 服务
+其中：
+- `f(qi, D)`：词 qi 在文档 D 中的词频
+- `|D|`：文档 D 的长度
+- `avgdl`：平均文档长度
+- `k1`：词频饱和参数
+- `b`：长度归一化参数
 
-```typescript
-import { IndexManager } from './index/manager';
-import { SearchManager } from './search/manager';
-import { StatsManager } from './stats/manager';
-import { CacheManager } from './cache';
-import { Logger } from './utils/logger';
-import { Metrics } from './utils/metrics';
+**字段加权**：
+- 为每个字段配置权重
+- 在计算分数时应用字段权重
+- 支持字段级别的 boost
 
-export class BM25Service {
-  private indexManager: IndexManager;
-  private searchManager: SearchManager;
-  private statsManager: StatsManager;
-  private cacheManager: CacheManager;
-  private logger: Logger;
-  private metrics: Metrics;
+### 4.4 分词器
 
-  constructor() {
-    this.indexManager = new IndexManager();
-    this.searchManager = new SearchManager(this.indexManager);
-    this.statsManager = new StatsManager();
-    this.cacheManager = new CacheManager();
-    this.logger = new Logger('bm25');
-    this.metrics = new Metrics();
-  }
+**职责**：
+- 对文本进行分词
+- 支持多种分词模式
+- 处理大小写和标点符号
+- 支持停用词过滤
+- 支持同义词扩展
 
-  async initialize(): Promise<void> {
-    await this.indexManager.initialize();
-    await this.statsManager.initialize();
-    await this.cacheManager.initialize();
-    this.logger.info('BM25 service initialized');
-  }
+**主要逻辑**：
+1. 接收文本输入
+2. 根据配置选择分词模式
+3. 对文本进行分词
+4. 处理大小写转换
+5. 过滤停用词
+6. 扩展同义词
+7. 返回词项列表
 
-  async addDocument(request: AddDocumentRequest): Promise<AddDocumentResponse> {
-    const startTime = Date.now();
+**分词模式**：
+- 简单分词：按空格和标点符号分词
+- 高级分词：支持词干提取和词形还原
+- 自定义分词：支持自定义分词规则
 
-    try {
-      await this.indexManager.addDocument({
-        id: request.id,
-        title: request.title,
-        content: request.content,
-        metadata: request.metadata
-      });
+### 4.5 缓存管理器
 
-      await this.statsManager.updateDocumentStats(request.id, {
-        title: request.title,
-        content: request.content
-      });
+**职责**：
+- 缓存热门查询的结果
+- 管理缓存的过期和淘汰
+- 提供缓存命中率统计
+- 支持缓存预热
 
-      this.metrics.increment('document_added');
-      this.metrics.histogram('add_document_latency', Date.now() - startTime);
+**主要逻辑**：
+1. 生成缓存键
+2. 检查缓存是否存在
+3. 如果缓存命中，返回缓存结果
+4. 如果缓存未命中，执行查询并缓存结果
+5. 管理缓存的过期和淘汰
+6. 统计缓存命中率
 
-      return { success: true, message: 'Document added successfully' };
-    } catch (error) {
-      this.logger.error('Failed to add document', { error, request });
-      this.metrics.increment('document_add_error');
-      return { success: false, message: error.message };
-    }
-  }
+**缓存策略**：
+- LRU：最近最少使用淘汰
+- TTL：基于时间的过期
+- 容量限制：限制缓存大小
 
-  async batchAddDocuments(
-    request: BatchAddDocumentsRequest
-  ): Promise<BatchAddDocumentsResponse> {
-    const startTime = Date.now();
-    let added = 0;
-    let failed = 0;
-    const errors: string[] = [];
+### 4.6 持久化管理器
 
-    for (const doc of request.documents) {
-      try {
-        await this.indexManager.addDocument(doc);
-        await this.statsManager.updateDocumentStats(doc.id, {
-          title: doc.title,
-          content: doc.content
-        });
-        added++;
-      } catch (error) {
-        failed++;
-        errors.push(`${doc.id}: ${error.message}`);
-      }
-    }
+**职责**：
+- 将索引持久化到存储
+- 从存储恢复索引
+- 支持增量更新和全量同步
+- 管理存储的连接和错误
 
-    this.metrics.increment('documents_added', added);
-    this.metrics.increment('documents_failed', failed);
-    this.metrics.histogram('batch_add_latency', Date.now() - startTime);
+**主要逻辑**：
+1. 将倒排索引序列化
+2. 将序列化的数据写入存储
+3. 从存储读取序列化的数据
+4. 反序列化并重建索引
+5. 处理存储错误和重试
 
-    return { added, failed, errors };
-  }
+**存储后端**：
+- Redis：高性能键值存储
+- 文件系统：本地文件存储
+- 数据库：支持多种数据库
 
-  async updateDocument(
-    request: UpdateDocumentRequest
-  ): Promise<UpdateDocumentResponse> {
-    const startTime = Date.now();
+### 4.7 高亮显示
 
-    try {
-      await this.indexManager.removeDocument(request.id);
-      await this.indexManager.addDocument({
-        id: request.id,
-        title: request.title,
-        content: request.content,
-        metadata: request.metadata
-      });
+**职责**：
+- 在搜索结果中高亮显示匹配的关键词
+- 支持多种高亮样式
+- 提供上下文片段
+- 处理多词高亮
 
-      await this.statsManager.updateDocumentStats(request.id, {
-        title: request.title,
-        content: request.content
-      });
+**主要逻辑**：
+1. 接收搜索结果和查询词
+2. 在文档内容中查找匹配的位置
+3. 在匹配位置周围添加高亮标记
+4. 提取上下文片段
+5. 返回高亮后的结果
 
-      this.metrics.increment('document_updated');
-      this.metrics.histogram('update_document_latency', Date.now() - startTime);
+---
 
-      return { success: true, message: 'Document updated successfully' };
-    } catch (error) {
-      this.logger.error('Failed to update document', { error, request });
-      this.metrics.increment('document_update_error');
-      return { success: false, message: error.message };
-    }
-  }
+## 五、主要逻辑流程
 
-  async removeDocument(
-    request: RemoveDocumentRequest
-  ): Promise<RemoveDocumentResponse> {
-    const startTime = Date.now();
+### 5.1 文档索引流程
 
-    try {
-      await this.indexManager.removeDocument(request.id);
-      await this.statsManager.removeDocumentStats(request.id);
-
-      this.metrics.increment('document_removed');
-      this.metrics.histogram('remove_document_latency', Date.now() - startTime);
-
-      return { success: true, message: 'Document removed successfully' };
-    } catch (error) {
-      this.logger.error('Failed to remove document', { error, request });
-      this.metrics.increment('document_remove_error');
-      return { success: false, message: error.message };
-    }
-  }
-
-  async search(request: SearchRequest): Promise<SearchResponse> {
-    const startTime = Date.now();
-    const cacheKey = this.getCacheKey(request);
-
-    try {
-      const cached = await this.cacheManager.get(cacheKey);
-      if (cached) {
-        this.logger.info('Cache hit', { query: request.query });
-        this.metrics.increment('cache_hit');
-        return cached;
-      }
-
-      const results = await this.searchManager.search(request);
-
-      if (request.options?.highlight) {
-        results.results = this.searchManager.highlight(results.results, request.query);
-      }
-
-      const response: SearchResponse = {
-        results: results.items,
-        total: results.total,
-        latency: Date.now() - startTime,
-        metadata: {
-          engine: 'bm25',
-          cached: false
-        }
-      };
-
-      await this.cacheManager.set(cacheKey, response, 300);
-
-      this.metrics.histogram('search_latency', response.latency);
-      this.metrics.increment('search_total');
-
-      return response;
-    } catch (error) {
-      this.logger.error('Search failed', { error, request });
-      this.metrics.increment('search_error');
-      throw error;
-    }
-  }
-
-  async getStats(): Promise<StatsResponse> {
-    const stats = await this.statsManager.getStats();
-    return {
-      document_count: stats.documentCount,
-      total_terms: stats.totalTerms,
-      avg_doc_length: stats.avgDocLength,
-      parameters: {
-        k1: this.searchManager.getK1(),
-        b: this.searchManager.getB()
-      }
-    };
-  }
-
-  async updateParameters(request: ParametersRequest): Promise<ParametersResponse> {
-    this.searchManager.setK1(request.k1 || 1.2);
-    this.searchManager.setB(request.b || 0.75);
-
-    return {
-      success: true,
-      parameters: {
-        k1: this.searchManager.getK1(),
-        b: this.searchManager.getB()
-      }
-    };
-  }
-
-  private getCacheKey(request: SearchRequest): string {
-    const hash = crypto
-      .createHash('md5')
-      .update(JSON.stringify(request))
-      .digest('hex');
-    return `bm25:${hash}`;
-  }
-}
+```
+1. 接收文档添加请求
+2. 对文档内容进行分词
+3. 对每个词项进行处理
+   - 转换为小写
+   - 过滤停用词
+   - 扩展同义词
+   - 提取词干
+4. 将词项和文档 ID 的映射关系存入倒排索引
+5. 更新词频和文档频率统计
+6. 将文档内容存入文档存储
+7. 持久化索引变更
+8. 返回成功响应
 ```
 
-### 5.3 索引管理器
+### 5.2 搜索流程
 
-```typescript
-import PostgresDB from 'flexsearch/db/postgres';
-
-export class IndexManager {
-  private db: PostgresDB;
-
-  constructor() {
-    this.db = new PostgresDB('bm25', {
-      host: process.env.POSTGRES_HOST,
-      port: process.env.POSTGRES_PORT,
-      user: process.env.POSTGRES_USER,
-      pass: process.env.POSTGRES_PASS,
-      name: process.env.POSTGRES_DB
-    });
-  }
-
-  async initialize(): Promise<void> {
-    await this.db.open();
-    await this.createTables();
-    await this.createIndexes();
-  }
-
-  async addDocument(doc: DocumentInput): Promise<void> {
-    await this.db.query(`
-      INSERT INTO documents (id, title, content, metadata)
-      VALUES ($1, $2, $3, $4)
-      ON CONFLICT (id) DO UPDATE SET
-        title = EXCLUDED.title,
-        content = EXCLUDED.content,
-        metadata = EXCLUDED.metadata
-    `, [doc.id, doc.title, doc.content, JSON.stringify(doc.metadata || {})]);
-  }
-
-  async removeDocument(id: string): Promise<void> {
-    await this.db.query('DELETE FROM documents WHERE id = $1', [id]);
-  }
-
-  async getDocument(id: string): Promise<Document | null> {
-    const result = await this.db.oneOrNone(`
-      SELECT id, title, content, metadata
-      FROM documents
-      WHERE id = $1
-    `, [id]);
-
-    if (!result) return null;
-
-    return {
-      id: result.id,
-      title: result.title,
-      content: result.content,
-      metadata: JSON.parse(result.metadata || '{}')
-    };
-  }
-
-  private async createTables(): Promise<void> {
-    await this.db.query(`
-      CREATE TABLE IF NOT EXISTS documents (
-        id VARCHAR(255) PRIMARY KEY,
-        title TEXT,
-        content TEXT,
-        metadata JSONB,
-        title_vector tsvector,
-        content_vector tsvector,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
-    `);
-  }
-
-  private async createIndexes(): Promise<void> {
-    await this.db.query(`
-      CREATE INDEX IF NOT EXISTS idx_documents_title_vector
-      ON documents USING GIN (title_vector);
-    `);
-
-    await this.db.query(`
-      CREATE INDEX IF NOT EXISTS idx_documents_content_vector
-      ON documents USING GIN (content_vector);
-    `);
-
-    await this.db.query(`
-      CREATE OR REPLACE FUNCTION documents_search_update()
-      RETURNS TRIGGER AS $$
-      BEGIN
-        NEW.title_vector := to_tsvector('english', COALESCE(NEW.title, ''));
-        NEW.content_vector := to_tsvector('english', COALESCE(NEW.content, ''));
-        RETURN NEW;
-      END;
-      $$ LANGUAGE plpgsql;
-    `);
-
-    await this.db.query(`
-      DROP TRIGGER IF EXISTS documents_search_trigger ON documents;
-    `);
-
-    await this.db.query(`
-      CREATE TRIGGER documents_search_trigger
-        BEFORE INSERT OR UPDATE ON documents
-        FOR EACH ROW EXECUTE FUNCTION documents_search_update();
-    `);
-  }
-}
+```
+1. 接收搜索请求
+2. 检查缓存是否存在
+3. 如果缓存命中，返回缓存结果
+4. 如果缓存未命中
+   - 对查询进行分词
+   - 扩展同义词
+   - 在倒排索引中查找每个词项对应的文档
+   - 对多个词项的结果进行交集或并集操作
+   - 对每个文档计算 BM25 分数
+   - 应用字段权重
+   - 根据分数对结果进行排序
+   - 截断结果到指定数量
+   - 缓存查询结果
+5. 返回搜索结果
 ```
 
-### 5.4 搜索管理器
+### 5.3 BM25 评分流程
 
-```typescript
-export class SearchManager {
-  private indexManager: IndexManager;
-  private k1: number = 1.2;
-  private b: number = 0.75;
-
-  constructor(indexManager: IndexManager) {
-    this.indexManager = indexManager;
-  }
-
-  async search(request: SearchRequest): Promise<SearchResultData> {
-    const { query, limit, offset, options } = request;
-    const language = options?.language || 'english';
-
-    const queryVector = await this.indexManager.db.one(`
-      SELECT to_tsquery('${language}', $1) as query
-    `, [query]);
-
-    const results = await this.indexManager.db.manyOrNone(`
-      SELECT
-        id,
-        title,
-        content,
-        metadata,
-        ts_rank_cd(title_vector, $1, 1) * 0.7 +
-        ts_rank_cd(content_vector, $1, 1) * 0.3 as score
-      FROM documents
-      WHERE title_vector @@ $1 OR content_vector @@ $1
-      ORDER BY score DESC
-      LIMIT $2 OFFSET $3
-    `, [queryVector.query, limit, offset]);
-
-    const total = await this.indexManager.db.one(`
-      SELECT COUNT(*) as count
-      FROM documents
-      WHERE title_vector @@ $1 OR content_vector @@ $1
-    `, [queryVector.query]);
-
-    return {
-      items: results.map(r => ({
-        id: r.id,
-        score: r.score,
-        doc: {
-          id: r.id,
-          title: r.title,
-          content: r.content,
-          metadata: JSON.parse(r.metadata || '{}')
-        },
-        highlights: []
-      })),
-      total: parseInt(total.count)
-    };
-  }
-
-  highlight(results: SearchResult[], query: string): SearchResult[] {
-    const terms = query.split(/\s+/).filter(t => t.length > 0);
-
-    return results.map(result => {
-      if (!result.doc) return result;
-
-      const title = result.doc.title || '';
-      const content = result.doc.content || '';
-      const highlights: string[] = [];
-
-      terms.forEach(term => {
-        const regex = new RegExp(`(${term})`, 'gi');
-        const titleMatches = title.match(regex);
-        const contentMatches = content.match(regex);
-
-        if (titleMatches) {
-          highlights.push(...titleMatches);
-        }
-        if (contentMatches) {
-          highlights.push(...contentMatches);
-        }
-      });
-
-      return {
-        ...result,
-        highlights
-      };
-    });
-  }
-
-  setK1(k1: number): void {
-    this.k1 = k1;
-  }
-
-  getK1(): number {
-    return this.k1;
-  }
-
-  setB(b: number): void {
-    this.b = b;
-  }
-
-  getB(): number {
-    return this.b;
-  }
-}
+```
+1. 接收文档和查询词
+2. 计算词频（TF）
+   - 统计词项在文档中的出现次数
+3. 计算逆文档频率（IDF）
+   - IDF = log((N - df + 0.5) / (df + 0.5))
+   - N：文档总数
+   - df：包含词项的文档数量
+4. 应用 BM25 公式计算分数
+5. 应用字段权重
+6. 返回最终分数
 ```
 
-### 5.5 统计管理器
+### 5.4 高亮显示流程
 
-```typescript
-import PostgresDB from 'flexsearch/db/postgres';
-
-export class StatsManager {
-  private db: PostgresDB;
-
-  constructor() {
-    this.db = new PostgresDB('bm25', {
-      host: process.env.POSTGRES_HOST,
-      port: process.env.POSTGRES_PORT,
-      user: process.env.POSTGRES_USER,
-      pass: process.env.POSTGRES_PASS,
-      name: process.env.POSTGRES_DB
-    });
-  }
-
-  async initialize(): Promise<void> {
-    await this.createStatsTables();
-  }
-
-  async updateDocumentStats(id: string, doc: { title: string; content: string }): Promise<void> {
-    const terms = this.extractTerms(`${doc.title} ${doc.content}`);
-    const docLength = terms.length;
-
-    await this.db.query(`
-      INSERT INTO document_stats (id, length, terms)
-      VALUES ($1, $2, $3)
-      ON CONFLICT (id) DO UPDATE SET
-        length = EXCLUDED.length,
-        terms = EXCLUDED.terms
-    `, [id, docLength, JSON.stringify(terms)]);
-
-    for (const term of terms) {
-      await this.db.query(`
-        INSERT INTO term_stats (term, doc_freq, total_freq)
-        VALUES ($1, 1, 1)
-        ON CONFLICT (term) DO UPDATE SET
-          doc_freq = term_stats.doc_freq + 1,
-          total_freq = term_stats.total_freq + 1
-      `, [term]);
-    }
-  }
-
-  async removeDocumentStats(id: string): Promise<void> {
-    const stats = await this.db.oneOrNone(`
-      SELECT terms FROM document_stats WHERE id = $1
-    `, [id]);
-
-    if (stats) {
-      const terms = JSON.parse(stats.terms);
-      for (const term of terms) {
-        await this.db.query(`
-          UPDATE term_stats
-          SET doc_freq = doc_freq - 1,
-               total_freq = total_freq - 1
-          WHERE term = $1
-        `, [term]);
-      }
-    }
-
-    await this.db.query('DELETE FROM document_stats WHERE id = $1', [id]);
-  }
-
-  async getStats(): Promise<BM25Stats> {
-    const documentCount = await this.db.one(`
-      SELECT COUNT(*) as count FROM documents
-    `);
-
-    const totalTerms = await this.db.one(`
-      SELECT SUM(total_freq) as sum FROM term_stats
-    `);
-
-    const avgDocLength = await this.db.one(`
-      SELECT AVG(length) as avg FROM document_stats
-    `);
-
-    return {
-      documentCount: parseInt(documentCount.count),
-      totalTerms: parseInt(totalTerms.sum || 0),
-      avgDocLength: parseFloat(avgDocLength.avg || 0)
-    };
-  }
-
-  private extractTerms(text: string): string[] {
-    return text
-      .toLowerCase()
-      .split(/\s+/)
-      .filter(t => t.length > 2);
-  }
-
-  private async createStatsTables(): Promise<void> {
-    await this.db.query(`
-      CREATE TABLE IF NOT EXISTS document_stats (
-        id VARCHAR(255) PRIMARY KEY,
-        length INTEGER,
-        terms JSONB
-      );
-    `);
-
-    await this.db.query(`
-      CREATE TABLE IF NOT EXISTS term_stats (
-        term VARCHAR(255) PRIMARY KEY,
-        doc_freq INTEGER,
-        total_freq INTEGER
-      );
-    `);
-  }
-}
+```
+1. 接收搜索结果和查询词
+2. 对查询词进行分词
+3. 在文档内容中查找每个词项的匹配位置
+4. 在匹配位置周围添加高亮标记
+5. 提取上下文片段（可选）
+6. 返回高亮后的结果
 ```
 
 ---
 
-## 六、开发计划
+## 六、技术选型
 
-### 6.1 任务分解
+### 6.1 核心依赖
 
-| 任务 | 预估时间 | 优先级 | 依赖 |
-|------|---------|--------|------|
-| **项目初始化** | 1 天 | P0 | - |
-| - 创建项目结构 | 0.5 天 | P0 | - |
-| - 配置 TypeScript | 0.5 天 | P0 | - |
-| **gRPC 服务** | 3 天 | P0 | 项目初始化 |
-| - 定义协议 | 0.5 天 | P0 | - |
-| - 实现服务器 | 1.5 天 | P0 | - |
-| - 健康检查 | 1 天 | P0 | - |
-| **索引管理器** | 3 天 | P0 | gRPC 服务 |
-| - PostgreSQL 集成 | 1 天 | P0 | - |
-| - 文档管理 | 1 天 | P0 | - |
-| - 全文搜索配置 | 1 天 | P0 | - |
-| **搜索管理器** | 3 天 | P0 | 索引管理器 |
-| - BM25 搜索 | 1.5 天 | P0 | - |
-| - 高亮显示 | 0.5 天 | P0 | - |
-| - 参数调优 | 1 天 | P0 | - |
-| **统计管理器** | 3 天 | P0 | 搜索管理器 |
-| - 词频统计 | 1.5 天 | P0 | - |
-| - 文档统计 | 1.5 天 | P0 | - |
-| **缓存管理器** | 2 天 | P1 | 搜索管理器 |
-| - Redis 缓存 | 1 天 | P1 | - |
-| - 缓存策略 | 1 天 | P1 | - |
-| **批量操作** | 2 天 | P1 | 索引管理器 |
-| - 批量添加 | 1 天 | P1 | - |
-| - 批量删除 | 1 天 | P1 | - |
-| **测试** | 3 天 | P1 | 所有功能 |
-| - 单元测试 | 1.5 天 | P1 | - |
-| - 集成测试 | 1 天 | P1 | - |
-| - 压力测试 | 0.5 天 | P1 | - |
-| **Docker 化** | 1 天 | P2 | 测试 |
-| - Dockerfile | 0.5 天 | P2 | - |
-| - docker-compose | 0.5 天 | P2 | - |
-| **总计** | **24 天** | - | - |
+| 依赖 | 用途 |
+|------|------|
+| Tokio | 异步运行时 |
+| Tonic | gRPC 框架 |
+| Redis | 缓存、存储 |
+| Tracing | 日志系统 |
+| Metrics | 监控指标 |
+| Serde | 序列化/反序列化 |
 
-### 6.2 里程碑
+### 6.2 依赖说明
 
-| 里程碑 | 交付物 | 时间 |
-|--------|--------|------|
-| **M1: gRPC 服务** | gRPC 服务器、协议定义、健康检查 | 第 4 天 |
-| **M2: 索引管理器** | PostgreSQL 集成、文档管理、全文搜索 | 第 7 天 |
-| **M3: 搜索管理器** | BM25 搜索、高亮显示、参数调优 | 第 10 天 |
-| **M4: 统计管理器** | 词频统计、文档统计 | 第 13 天 |
-| **M5: 缓存管理器** | Redis 缓存、缓存策略 | 第 15 天 |
-| **M6: 批量操作** | 批量添加、批量删除 | 第 17 天 |
-| **M7: 测试完成** | 单元测试、集成测试、压力测试 | 第 20 天 |
-| **M8: 部署就绪** | Docker 镜像、文档 | 第 21 天 |
+**Tokio**：
+- 异步运行时
+- 高性能的异步 I/O
+- 支持任务调度和定时器
+
+**Tonic**：
+- gRPC 框架
+- 支持 Protocol Buffers
+- 高性能的 RPC 通信
+
+**Redis**：
+- 高性能键值存储
+- 支持缓存和持久化
+- 支持分布式场景
+
+**Tracing**：
+- 结构化日志
+- 支持分布式追踪
+- 高性能的日志记录
+
+**Metrics**：
+- 监控指标收集
+- 支持多种指标类型
+- 支持指标导出
+
+**Serde**：
+- 序列化和反序列化
+- 支持多种数据格式
+- 高性能的数据转换
 
 ---
 
-## 七、测试策略
+## 七、设计原则
 
-### 7.1 单元测试
+### 7.1 架构原则
 
-```typescript
-import { BM25Service } from '../src/service';
+1. **性能优先**：使用高效的数据结构和算法
+2. **内存安全**：利用 Rust 的所有权系统保证内存安全
+3. **并发安全**：使用线程安全的数据结构
+4. **可扩展性**：易于添加新的搜索特性
+5. **可观测性**：完善的日志、监控和追踪
 
-describe('BM25Service', () => {
-  let service: BM25Service;
+### 7.2 代码原则
 
-  beforeEach(async () => {
-    service = new BM25Service();
-    await service.initialize();
-  });
-
-  afterEach(async () => {
-    await service.close();
-  });
-
-  test('should add document', async () => {
-    const request = {
-      id: 'doc1',
-      title: 'Test Document',
-      content: 'This is a test document',
-      metadata: { category: 'test' }
-    };
-
-    const response = await service.addDocument(request);
-    expect(response.success).toBe(true);
-  });
-
-  test('should search documents', async () => {
-    await service.addDocument({
-      id: 'doc1',
-      title: 'Test Document',
-      content: 'This is a test document'
-    });
-
-    const response = await service.search({
-      query: 'test',
-      limit: 10,
-      offset: 0,
-      options: {}
-    });
-
-    expect(response.results.length).toBeGreaterThan(0);
-    expect(response.results[0].score).toBeGreaterThan(0);
-  });
-});
-```
-
----
-
-## 八、部署方案
-
-### 8.1 Dockerfile
-
-```dockerfile
-FROM node:20-alpine AS builder
-
-WORKDIR /app
-
-COPY package*.json ./
-RUN npm ci --only=production
-
-COPY . .
-RUN npm run build
-
-FROM node:20-alpine
-
-WORKDIR /app
-
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/package.json ./
-
-EXPOSE 8084
-
-CMD ["node", "dist/index.js"]
-```
-
-### 8.2 Docker Compose
-
-```yaml
-version: '3.8'
-
-services:
-  bm25:
-    build: ./services/bm25
-    ports:
-      - "8084:8084"
-    environment:
-      - NODE_ENV=production
-      - POSTGRES_HOST=postgres
-      - POSTGRES_PORT=5432
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASS=postgres
-      - POSTGRES_DB=search
-      - REDIS_URL=redis://redis:6379
-      - K1=1.2
-      - B=0.75
-      - LOG_LEVEL=info
-    depends_on:
-      - postgres
-      - redis
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8084/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-```
-
----
-
-## 九、监控和日志
-
-### 9.1 监控指标
-
-| 指标 | 类型 | 说明 |
-|------|------|------|
-| **document_count** | Gauge | 文档总数 |
-| **search_total** | Counter | 搜索总数 |
-| **search_latency** | Histogram | 搜索延迟 |
-| **cache_hit** | Counter | 缓存命中数 |
-| **cache_miss** | Counter | 缓存未命中数 |
-
-### 9.2 日志格式
-
-```json
-{
-  "level": "info",
-  "time": "2024-01-01T00:00:00.000Z",
-  "pid": 12345,
-  "hostname": "bm25-1",
-  "component": "bm25",
-  "query": "test",
-  "results": 10,
-  "latency": 50,
-  "k1": 1.2,
-  "b": 0.75
-}
-```
-
----
-
-## 十、风险和缓解
-
-| 风险 | 概率 | 影响 | 缓解措施 |
-|------|------|------|---------|
-| PostgreSQL 性能瓶颈 | 中 | 高 | 优化查询、使用索引 |
-| 统计计算慢 | 中 | 中 | 增量更新统计 |
-| 缓存一致性 | 低 | 中 | 合理的缓存策略 |
-
----
-
-**文档版本**：1.0
-**最后更新**：2026-02-04
-**作者**：FlexSearch 技术分析团队
+1. **简洁性**：代码简洁明了，易于理解和维护
+2. **可测试性**：代码易于测试，单元测试覆盖率高
+3. **模块化**：每个模块职责单一，高内聚低耦合
+4. **错误处理**：完善的错误处理和恢复机制
+5. **文档完善**：提供详细的 API 文档和使用示例
