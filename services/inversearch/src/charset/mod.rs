@@ -1,3 +1,68 @@
+pub mod exact;
+pub mod normalize;
+pub mod cjk;
+pub mod latin;
+
+// Re-export all charset modules to match JavaScript structure
+pub use exact::get_charset_exact as charset_exact;
+pub use normalize::get_charset_normalize as charset_normalize;
+pub use cjk::get_charset_cjk as charset_cjk;
+
+// Latin charset modules
+pub use latin::get_charset_latin_balance as charset_latin_balance;
+pub use latin::get_charset_latin_advanced as charset_latin_advanced;
+pub use latin::get_charset_latin_extra as charset_latin_extra;
+pub use latin::get_charset_latin_soundex as charset_latin_soundex;
+
+// Universal charset (matching JavaScript exports)
+pub fn get_charset_exact() -> crate::r#type::EncoderOptions {
+    exact::get_charset_exact()
+}
+
+pub fn get_charset_default() -> crate::r#type::EncoderOptions {
+    normalize::get_charset_normalize()
+}
+
+pub fn get_charset_normalize() -> crate::r#type::EncoderOptions {
+    normalize::get_charset_normalize()
+}
+
+// Latin charset (matching JavaScript exports)
+pub fn get_charset_latin_balance() -> crate::r#type::EncoderOptions {
+    latin::get_charset_latin_balance()
+}
+
+pub fn get_charset_latin_advanced() -> crate::r#type::EncoderOptions {
+    latin::get_charset_latin_advanced()
+}
+
+pub fn get_charset_latin_extra() -> crate::r#type::EncoderOptions {
+    latin::get_charset_latin_extra()
+}
+
+pub fn get_charset_latin_soundex() -> crate::r#type::EncoderOptions {
+    latin::get_charset_latin_soundex()
+}
+
+// CJK charset (matching JavaScript exports)
+pub fn get_charset_cjk() -> crate::r#type::EncoderOptions {
+    cjk::get_charset_cjk()
+}
+
+// Deprecated exports (for backward compatibility)
+pub fn get_charset_latin_exact() -> crate::r#type::EncoderOptions {
+    exact::get_charset_exact()
+}
+
+pub fn get_charset_latin_default() -> crate::r#type::EncoderOptions {
+    normalize::get_charset_normalize()
+}
+
+pub fn get_charset_latin_simple() -> crate::r#type::EncoderOptions {
+    normalize::get_charset_normalize()
+}
+
+// Legacy compatibility - keep the original charset polyfill functions
 use std::collections::HashMap;
 
 pub fn get_charset_polyfill() -> HashMap<char, &'static str> {
