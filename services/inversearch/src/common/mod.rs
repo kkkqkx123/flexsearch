@@ -56,15 +56,15 @@ pub fn merge_option<T>(value: Option<T>, default_value: T, merge_value: Option<T
 where
     T: Clone,
 {
-    if let Some(merge) = merge_value {
+    if let Some(ref merge) = merge_value {
         if let Some(val) = value {
             if merge_value.is_some() {
                 val
             } else {
-                merge
+                merge.clone()
             }
         } else {
-            merge
+            merge.clone()
         }
     } else {
         value.unwrap_or(default_value)
@@ -109,7 +109,7 @@ mod tests {
         assert!(is_object(&obj));
 
         let arr = serde_json::json!([1, 2, 3]);
-        assert!(!is_object(&obj));
+        assert!(!is_object(&arr));
     }
 
     #[test]

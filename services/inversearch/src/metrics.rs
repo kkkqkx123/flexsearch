@@ -14,68 +14,44 @@ pub struct Metrics {
 impl Metrics {
     pub fn new() -> Self {
         Metrics {
-            document_add_total: counter!(
-                "inversearch_document_add_total",
-                "Total number of documents added"
-            ),
-            document_update_total: counter!(
-                "inversearch_document_update_total",
-                "Total number of documents updated"
-            ),
-            document_remove_total: counter!(
-                "inversearch_document_remove_total",
-                "Total number of documents removed"
-            ),
-            search_total: counter!(
-                "inversearch_search_total",
-                "Total number of searches"
-            ),
-            search_duration: histogram!(
-                "inversearch_search_duration_seconds",
-                "Search duration in seconds"
-            ),
-            index_size: histogram!(
-                "inversearch_index_size_bytes",
-                "Index size in bytes"
-            ),
-            cache_hits: counter!(
-                "inversearch_cache_hits_total",
-                "Total number of cache hits"
-            ),
-            cache_misses: counter!(
-                "inversearch_cache_misses_total",
-                "Total number of cache misses"
-            ),
+            document_add_total: counter!("inversearch_document_add_total"),
+            document_update_total: counter!("inversearch_document_update_total"),
+            document_remove_total: counter!("inversearch_document_remove_total"),
+            search_total: counter!("inversearch_search_total"),
+            search_duration: histogram!("inversearch_search_duration_seconds"),
+            index_size: histogram!("inversearch_index_size_bytes"),
+            cache_hits: counter!("inversearch_cache_hits_total"),
+            cache_misses: counter!("inversearch_cache_misses_total"),
         }
     }
 
     pub fn record_document_add(&self) {
-        self.document_add_total.increment();
+        self.document_add_total.increment(1);
     }
 
     pub fn record_document_update(&self) {
-        self.document_update_total.increment();
+        self.document_update_total.increment(1);
     }
 
     pub fn record_document_remove(&self) {
-        self.document_remove_total.increment();
+        self.document_remove_total.increment(1);
     }
 
     pub fn record_search(&self, duration: f64) {
-        self.search_total.increment();
-        self.search_duration.observe(duration);
+        self.search_total.increment(1);
+        self.search_duration.record(duration);
     }
 
     pub fn record_index_size(&self, size: f64) {
-        self.index_size.observe(size);
+        self.index_size.record(size);
     }
 
     pub fn record_cache_hit(&self) {
-        self.cache_hits.increment();
+        self.cache_hits.increment(1);
     }
 
     pub fn record_cache_miss(&self) {
-        self.cache_misses.increment();
+        self.cache_misses.increment(1);
     }
 }
 

@@ -1,0 +1,272 @@
+use crate::encoder::Encoder;
+use crate::keystore::{KeystoreMap, KeystoreSet, KeystoreArray, DocId, ResolutionSlot};
+use crate::tokenizer::Tokenizer;
+use crate::error::{Result, InversearchError};
+use std::collections::HashMap;
+
+pub mod builder;
+pub mod remover;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum TokenizeMode {
+    Strict,
+    Forward,
+    Reverse,
+    Full,
+}
+
+#[derive(Clone)]
+pub enum Register {
+    Set(KeystoreSet<DocId>),
+    Map(KeystoreMap<DocId, Vec<(bool, String, Option<String>, usize)>>),
+}
+
+#[derive(Clone)]
+pub struct Index {
+    pub map: KeystoreMap<String, HashMap<String, HashMap<usize, Vec<DocId>>>>,
+    pub ctx: KeystoreMap<String, HashMap<String, HashMap<usize, Vec<DocId>>>>,
+    pub reg: Register,
+    pub resolution: usize,
+    pub resolution_ctx: usize,
+    pub tokenize: TokenizeMode,
+    pub depth: usize,
+    pub bidirectional: bool,
+    pub fastupdate: bool,
+    pub score: Option<ScoreFn>,
+    pub encoder: Encoder,
+    pub rtl: bool,
+}
+
+pub type ScoreFn = fn(&[u8], &str, usize, Option<usize>, Option<usize>) -> usize;
+
+impl Index {
+    pub fn new(options: IndexOptions) -> Result<Self> {
+        let resolution = options.resolution.unwrap_or(9);
+        let resolution_ctx = options.resolution_ctx.unwrap_or(resolution);
+        let depth = options.depth.unwrap_or(0);
+        let bidirectional = options.bidirectional.unwrap_or(false);
+        let fastupdate = options.fastupdate.unwrap_or(false);
+        let rtl = options.rtl.unwrap_or(false);
+        
+        let encoder = Encoder::new(options.encoder.unwrap_or_default());
+        
+        let tokenize = match options.tokenize_mode {
+            Some("strict") => TokenizeMode::Strict,
+            Some("forward") => TokenizeMode::Forward,
+            Some("reverse") => TokenizeMode::Reverse,
+            Some("full") => TokenizeMode::Full,
+            _ => TokenizeMode::Strict,
+        };
+
+        let reg = if fastupdate {
+            Register::Map(KeystoreMap::new(8))
+        } else {
+            Register::Set(KeystoreSet::new(8))
+        };
+
+        Ok(Index {
+            map: KeystoreMap::new(8),
+            ctx: KeystoreMap::new(8),
+            reg,
+            resolution,
+            resolution_ctx,
+            tokenize,
+            depth,
+            bidirectional,
+            fastupdate,
+            score: options.score,
+            encoder,
+            rtl,
+        })
+    }
+
+    pub fn add(&mut self, id: DocId, content: &str, append: bool) -> Result<()> {
+        builder::add_document(self, id, content, append, false)
+    }
+
+    pub fn remove(&mut self, id: DocId, skip_deletion: bool) -> Result<()> {
+        remover::remove_document(self, id, skip_deletion)
+    }
+
+    pub fn clear(&mut self) {
+        self.map.clear();
+        self.ctx.clear();
+        match &mut self.reg {
+            Register::Set(set) => set.clear(),
+            Register::Map(map) => map.clear(),
+        }
+    }
+
+    pub fn contains(&self, id: DocId) -> bool {
+        match &self.reg {
+            Register::Set(set) => set.has(&id),
+            Register::Map(map) => map.has(&id),
+        }
+    }
+
+    pub fn get_score(
+        &self,
+        resolution: usize,
+        length: usize,
+        i: usize,
+        term_length: Option<usize>,
+        x: Option<usize>,
+    ) -> usize {
+        if let Some(score_fn) = self.score {
+            return score_fn(&[], "", i, None, x);
+        }
+
+        builder::get_score(resolution, length, i, term_length, x)
+    }
+
+    pub fn push_index(
+        &mut self,
+        dupes: &mut HashMap<String, bool>,
+        term: &str,
+        score: usize,
+        id: DocId,
+        append: bool,
+        keyword: Option<&str>,
+    ) {
+        let term_key = term.to_string();
+        let has_dupe = dupes.get(&term_key).copied().unwrap_or(false);
+        let has_keyword_dupe = if let Some(kw) = keyword {
+            dupes.get(&term_key)
+                .and_then(|_| dupes.get(&kw.to_string()))
+                .copied()
+                .unwrap_or(false)
+        } else {
+            false
+        };
+
+        if !has_dupe || (keyword.is_some() && !has_keyword_dupe) {
+            if let Some(kw) = keyword {
+                dupes.insert(term_key.clone(), true);
+                dupes.insert(kw.to_string(), true);
+
+                let kw_key = kw.to_string();
+                let kw_hash = self.keystore_hash_str(&kw_key);
+                
+                let ctx_map = self.ctx.index.entry(kw_hash).or_insert_with(HashMap::new);
+                
+                let term_map = ctx_map.entry(term_key.clone()).or_insert_with(HashMap::new);
+                
+                let doc_ids_map = term_map.entry(kw_key.clone()).or_insert_with(HashMap::new);
+                
+                let doc_ids = doc_ids_map.entry(score).or_insert_with(Vec::new);
+
+                if !append || !doc_ids.contains(&id) {
+                    doc_ids.push(id);
+
+                    if self.fastupdate {
+                        if let Register::Map(reg) = &mut self.reg {
+                            let refs = reg.index.entry(self.keystore_hash_str(&id.to_string())).or_insert_with(HashMap::new);
+                            refs.entry(id).or_insert_with(Vec::new).push((true, kw_key, Some(term_key), score));
+                        }
+                    }
+                }
+            } else {
+                dupes.insert(term_key.clone(), true);
+
+                let doc_ids_map = self.map.index
+                    .entry(self.keystore_hash_str(&term_key))
+                    .or_insert_with(HashMap::new);
+                
+                let doc_ids_map_inner = doc_ids_map
+                    .entry(term_key.clone())
+                    .or_insert_with(HashMap::new);
+
+                let doc_ids = doc_ids_map_inner
+                    .entry(score.to_string())
+                    .or_insert_with(Vec::new);
+
+                if !append || !doc_ids.contains(&id) {
+                    doc_ids.push(id);
+
+                    if self.fastupdate {
+                        if let Register::Map(reg) = &mut self.reg {
+                            reg.index
+                                .entry(self.keystore_hash_str(&id.to_string()))
+                                .or_insert_with(HashMap::new)
+                                .entry(id)
+                                .or_insert_with(Vec::new)
+                                .push((false, term_key, None, score));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    fn keystore_hash(&self, id: &str) -> usize {
+        let id_str = id.to_string();
+        let mut crc: u32 = 0;
+        for c in id_str.chars() {
+            crc = (crc << 8) ^ (crc >> (32 - 8)) ^ (c as u32);
+        }
+        (crc as usize) % (1 << 8)
+    }
+
+    pub fn keystore_hash_str(&self, s: &str) -> usize {
+        let mut crc: u32 = 0;
+        for c in s.chars() {
+            crc = (crc << 8) ^ (crc >> (32 - 8)) ^ (c as u32);
+        }
+        (crc as usize) % (1 << 8)
+    }
+
+    pub fn update(&mut self, id: DocId, content: &str) -> Result<()> {
+        self.remove(id, false)?;
+        self.add(id, content, false)
+    }
+
+    pub fn search(&self, options: &crate::r#type::SearchOptions) -> Result<crate::search::SearchResult> {
+        crate::search::search(self, options)
+    }
+
+    pub fn search_simple(&self, query: &str) -> Result<crate::r#type::SearchResults> {
+        let options = crate::r#type::SearchOptions {
+            query: Some(query.to_string()),
+            ..Default::default()
+        };
+        let result = self.search(&options)?;
+        Ok(result.results)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct IndexOptions {
+    pub resolution: Option<usize>,
+    pub resolution_ctx: Option<usize>,
+    pub tokenize_mode: Option<&'static str>,
+    pub depth: Option<usize>,
+    pub bidirectional: Option<bool>,
+    pub fastupdate: Option<bool>,
+    pub score: Option<ScoreFn>,
+    pub encoder: Option<crate::encoder::EncoderOptions>,
+    pub rtl: Option<bool>,
+    pub tokenize: Option<crate::tokenizer::TokenizerOptions>,
+}
+
+impl Default for IndexOptions {
+    fn default() -> Self {
+        IndexOptions {
+            resolution: None,
+            resolution_ctx: None,
+            tokenize_mode: None,
+            depth: None,
+            bidirectional: None,
+            fastupdate: None,
+            score: None,
+            encoder: None,
+            rtl: None,
+            tokenize: None,
+        }
+    }
+}
+
+impl Default for Index {
+    fn default() -> Self {
+        Index::new(IndexOptions::default()).unwrap()
+    }
+}
