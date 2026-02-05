@@ -20,20 +20,29 @@ pub use charset::{
     charset_latin_balance, charset_latin_advanced, charset_latin_extra, charset_latin_soundex,
     get_charset_exact, get_charset_default, get_charset_normalize,
     get_charset_latin_balance, get_charset_latin_advanced, get_charset_latin_extra, get_charset_latin_soundex,
-    get_charset_cjk, get_charset_latin_exact, get_charset_latin_default, get_charset_latin_simple,
-    get_charset_polyfill, normalize_charset
+    get_charset_cjk
 };
 pub use common::*;
 pub use config::*;
 pub use encoder::*;
 pub use error::*;
-pub use highlight::*;
+// Export highlight types with specific names to avoid conflicts
+pub use highlight::{
+    highlight_fields, highlight_document, highlight_single_document,
+    HighlightProcessor, HighlightConfig
+};
 pub use index::*;
 pub use intersect::*;
 pub use keystore::*;
 pub use metrics::*;
-pub use proto::*;
 pub use resolver::*;
 pub use search::*;
 pub use tokenizer::*;
-pub use r#type::*;
+// Export specific types from r#type module to avoid conflicts
+pub use r#type::{
+    IndexOptions, ContextOptions, SearchOptions, FieldOption, TagOption,
+    EncoderOptions, DocumentSearchResult, DocumentSearchResults,
+    EnrichedDocumentSearchResult, EnrichedDocumentSearchResults,
+    MergedDocumentSearchEntry, MergedDocumentSearchResults,
+    DocId, SearchResults, IntermediateSearchResults
+};
