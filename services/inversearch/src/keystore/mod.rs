@@ -205,8 +205,12 @@ where
         if self.refs.is_empty() {
             self.refs.push(Vec::new());
         }
-        self.refs.last_mut().unwrap().push(value);
-        self.size += 1;
+        if let Some(last_vec) = self.refs.last_mut() {
+            last_vec.push(value);
+            self.size += 1;
+        } else {
+            eprintln!("Keystore: Failed to get last reference vector");
+        }
     }
 
     pub fn get(&self, index: usize) -> Option<&T> {
@@ -234,7 +238,13 @@ where
             self.refs.push(Vec::new());
             global_index += 1 << self.bit;
         }
-        let last_vec = self.refs.last_mut().unwrap();
+        let last_vec = match self.refs.last_mut() {
+            Some(vec) => vec,
+            None => {
+                eprintln!("Keystore: No reference vector available");
+                return;
+            }
+        };
         let local_index = index - (global_index - (1 << self.bit));
         if local_index < last_vec.len() {
             last_vec[local_index] = value;

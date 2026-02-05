@@ -5,11 +5,16 @@ use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, RwLock};
 
 lazy_static::lazy_static! {
-    static ref WHITESPACE: Regex = Regex::new(r"[^\p{L}\p{N}]+").unwrap();
-    static ref NORMALIZE: Regex = Regex::new(r"[\u{0300}-\u{036f}]").unwrap();
-    static ref NUMERIC_SPLIT_LENGTH: Regex = Regex::new(r"(\d{3})").unwrap();
-    static ref NUMERIC_SPLIT_PREV_CHAR: Regex = Regex::new(r"(\D)(\d{3})").unwrap();
-    static ref NUMERIC_SPLIT_NEXT_CHAR: Regex = Regex::new(r"(\d{3})(\D)").unwrap();
+    static ref WHITESPACE: Regex = Regex::new(r"[^\p{L}\p{N}]+")
+        .expect("Failed to compile WHITESPACE regex");
+    static ref NORMALIZE: Regex = Regex::new(r"[\u{0300}-\u{036f}]")
+        .expect("Failed to compile NORMALIZE regex");
+    static ref NUMERIC_SPLIT_LENGTH: Regex = Regex::new(r"(\d{3})")
+        .expect("Failed to compile NUMERIC_SPLIT_LENGTH regex");
+    static ref NUMERIC_SPLIT_PREV_CHAR: Regex = Regex::new(r"(\D)(\d{3})")
+        .expect("Failed to compile NUMERIC_SPLIT_PREV_CHAR regex");
+    static ref NUMERIC_SPLIT_NEXT_CHAR: Regex = Regex::new(r"(\d{3})(\D)")
+        .expect("Failed to compile NUMERIC_SPLIT_NEXT_CHAR regex");
 }
 
 #[derive(Clone)]
@@ -97,7 +102,11 @@ impl Encoder {
             replacer
                 .into_iter()
                 .map(|(pattern, replacement)| {
-                    let regex = Regex::new(&pattern).unwrap();
+                    let regex = Regex::new(&pattern)
+                        .unwrap_or_else(|e| {
+                            eprintln!("Failed to compile regex pattern '{}': {}", pattern, e);
+                            Regex::new("").expect("Failed to create empty regex")
+                        });
                     (regex, replacement)
                 })
                 .collect()
@@ -405,7 +414,7 @@ impl Encoder {
         if self.filter.is_none() {
             self.filter = Some(FilterOption::Set(HashSet::new()));
         }
-        if let FilterOption::Set(set) = self.filter.as_mut().unwrap() {
+        if let Some(FilterOption::Set(set)) = self.filter.as_mut() {
             set.insert(term);
         }
         if let Some(cache) = &mut self.cache {

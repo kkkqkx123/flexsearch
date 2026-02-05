@@ -154,7 +154,9 @@ impl Config {
             if config.storage.redis.is_none() {
                 config.storage.redis = Some(RedisConfig::default());
             }
-            config.storage.redis.as_mut().unwrap().url = redis_url;
+            if let Some(redis_config) = config.storage.redis.as_mut() {
+                redis_config.url = redis_url;
+            }
         }
 
         Ok(config)

@@ -75,7 +75,8 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             server: ServerConfig {
-                address: "0.0.0.0:50051".parse().unwrap(),
+                address: "0.0.0.0:50051".parse()
+                    .expect("Failed to parse default server address"),
             },
             redis: RedisConfig {
                 url: "redis://localhost:6379".to_string(),

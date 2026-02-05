@@ -17,6 +17,9 @@ pub enum InversearchError {
     #[error("Cache error: {0}")]
     Cache(#[from] CacheError),
 
+    #[error("Highlight error: {0}")]
+    Highlight(String),
+
     #[error("Configuration error: {0}")]
     Config(String),
 

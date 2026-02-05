@@ -162,7 +162,10 @@ impl Highlighter {
         pos_last_match: i32,
         length_matches_all: usize,
     ) -> Result<String> {
-        let boundary = self.boundary.as_ref().unwrap();
+        let boundary = match self.boundary.as_ref() {
+            Some(b) => b,
+            None => return Err(crate::error::InversearchError::Highlight("No boundary configuration provided".to_string())),
+        };
         let boundary_total = boundary.total.unwrap_or(900000);
         let boundary_before = boundary.before.unwrap_or(0);
         let boundary_after = boundary.after.unwrap_or(0);

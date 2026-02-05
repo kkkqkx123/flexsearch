@@ -162,7 +162,12 @@ fn add_forward(
     let mut token = String::new();
     for x in 0..term.len() {
         let char_idx = if rtl { term.len() - 1 - x } else { x };
-        token.push(term.chars().nth(char_idx).unwrap());
+        if let Some(ch) = term.chars().nth(char_idx) {
+            token.push(ch);
+        } else {
+            eprintln!("Index builder: Character index {} out of bounds for term '{}'", char_idx, term);
+            continue;
+        }
         index.push_index(dupes, &token, score, id, append, None);
     }
 }

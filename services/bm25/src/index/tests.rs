@@ -14,14 +14,14 @@ mod tests {
     use crate::index::stats::get_stats;
 
     fn create_test_manager() -> (TempDir, IndexManager, IndexSchema) {
-        let temp_dir = tempdir().unwrap();
+        let temp_dir = tempdir().expect("Failed to create temp directory");
         let path = temp_dir.path().join("test_index");
         
         if !path.exists() {
-            fs::create_dir_all(&path).unwrap();
+            fs::create_dir_all(&path).expect("Failed to create test index directory");
         }
         
-        let manager = IndexManager::create(&path).unwrap();
+        let manager = IndexManager::create(&path).expect("Failed to create index manager");
         let schema = IndexSchema::new();
         
         (temp_dir, manager, schema)
@@ -92,26 +92,26 @@ mod tests {
 
     #[test]
     fn test_index_manager_create() {
-        let temp_dir = tempdir().unwrap();
+        let temp_dir = tempdir().expect("Failed to create temp directory");
         let path = temp_dir.path().join("test_index");
-        fs::create_dir_all(&path).unwrap();
+        fs::create_dir_all(&path).expect("Failed to create test index directory");
 
-        let manager = IndexManager::create(&path).unwrap();
+        let manager = IndexManager::create(&path).expect("Failed to create index manager");
         assert!(path.exists());
     }
 
     #[test]
     fn test_index_manager_open() {
-        let temp_dir = tempdir().unwrap();
+        let temp_dir = tempdir().expect("Failed to create temp directory");
         let path = temp_dir.path().join("test_index");
 
         {
-            fs::create_dir_all(&path).unwrap();
-            let manager = IndexManager::create(&path).unwrap();
+            fs::create_dir_all(&path).expect("Failed to create test index directory");
+            let manager = IndexManager::create(&path).expect("Failed to create index manager");
             let _ = manager.index();
         }
 
-        let manager = IndexManager::open(&path).unwrap();
+        let manager = IndexManager::open(&path).expect("Failed to open index manager");
         let _ = manager.index();
     }
 
@@ -142,7 +142,7 @@ mod tests {
 
         let result = get_document(&manager, &schema, "1");
         assert!(result.is_ok());
-        assert!(result.unwrap().is_some());
+        assert!(result.expect("Failed to get document").is_some());
     }
 
     #[test]
@@ -216,7 +216,7 @@ mod tests {
         let result = search(&manager, &schema, "Rust", &options);
         assert!(result.is_ok());
 
-        let (results, max_score) = result.unwrap();
+        let (results, max_score) = result.expect("Search failed");
         assert!(results.len() >= 0);
         assert!(max_score >= 0.0);
     }
@@ -277,7 +277,7 @@ mod tests {
         let result = search(&manager, &schema, "hello world", &options);
         assert!(result.is_ok());
 
-        let (results, _) = result.unwrap();
+        let (results, _) = result.expect("Search failed");
         assert!(results.len() > 0);
     }
 
@@ -316,7 +316,7 @@ mod tests {
         let result = search(&manager, &schema, "Python Java", &options);
         assert!(result.is_ok());
 
-        let (results, _) = result.unwrap();
+        let (results, _) = result.expect("Search failed");
         assert_eq!(results.len(), 0);
     }
 

@@ -62,7 +62,13 @@ where
     }
 
     pub fn get(&self, key: &K) -> Option<V> {
-        let mut entries = self.entries.write().unwrap();
+        let mut entries = match self.entries.write() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                eprintln!("Cache: RwLock poisoned in get operation, recovering");
+                poisoned.into_inner()
+            }
+        };
 
         if let Some(entry) = entries.get_mut(key) {
             if entry.is_expired(self.ttl) {
@@ -88,7 +94,13 @@ where
     }
 
     pub fn insert(&self, key: K, value: V) {
-        let mut entries = self.entries.write().unwrap();
+        let mut entries = match self.entries.write() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                eprintln!("Cache: RwLock poisoned in insert operation, recovering");
+                poisoned.into_inner()
+            }
+        };
 
         if entries.len() >= self.max_size {
             self.evict(&mut entries);
@@ -99,7 +111,13 @@ where
     }
 
     pub fn remove(&self, key: &K) -> Option<V> {
-        let mut entries = self.entries.write().unwrap();
+        let mut entries = match self.entries.write() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                eprintln!("Cache: RwLock poisoned in remove operation, recovering");
+                poisoned.into_inner()
+            }
+        };
         entries.remove(key).map(|e| {
             self.update_stats(|s| s.size = entries.len());
             e.value
@@ -107,21 +125,45 @@ where
     }
 
     pub fn clear(&self) {
-        let mut entries = self.entries.write().unwrap();
+        let mut entries = match self.entries.write() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                eprintln!("Cache: RwLock poisoned in clear operation, recovering");
+                poisoned.into_inner()
+            }
+        };
         entries.clear();
         self.update_stats(|s| s.size = 0);
     }
 
     pub fn size(&self) -> usize {
-        self.entries.read().unwrap().len()
+        match self.entries.read() {
+            Ok(guard) => guard.len(),
+            Err(poisoned) => {
+                eprintln!("Cache: RwLock poisoned in size operation, recovering");
+                poisoned.into_inner().len()
+            }
+        }
     }
 
     pub fn is_empty(&self) -> bool {
-        self.entries.read().unwrap().is_empty()
+        match self.entries.read() {
+            Ok(guard) => guard.is_empty(),
+            Err(poisoned) => {
+                eprintln!("Cache: RwLock poisoned in is_empty operation, recovering");
+                poisoned.into_inner().is_empty()
+            }
+        }
     }
 
     pub fn stats(&self) -> CacheStats {
-        self.stats.read().unwrap().clone()
+        match self.stats.read() {
+            Ok(guard) => guard.clone(),
+            Err(poisoned) => {
+                eprintln!("Cache: RwLock poisoned in stats operation, recovering");
+                poisoned.into_inner().clone()
+            }
+        }
     }
 
     fn evict(&self, entries: &mut HashMap<K, CacheEntry<V>>) {
@@ -165,12 +207,24 @@ where
     where
         F: FnOnce(&mut CacheStats),
     {
-        let mut stats = self.stats.write().unwrap();
+        let mut stats = match self.stats.write() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                eprintln!("Cache: RwLock poisoned in update_stats operation, recovering");
+                poisoned.into_inner()
+            }
+        };
         f(&mut stats);
     }
 
     pub fn cleanup(&self) {
-        let mut entries = self.entries.write().unwrap();
+        let mut entries = match self.entries.write() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                eprintln!("Cache: RwLock poisoned in cleanup operation, recovering");
+                poisoned.into_inner()
+            }
+        };
         let before = entries.len();
 
         entries.retain(|_, entry| !entry.is_expired(self.ttl));

@@ -2,7 +2,8 @@ fn main() {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::from_default_env()
-                .add_directive("inversearch=info".parse().unwrap()),
+                .add_directive("inversearch=info".parse()
+                    .expect("Failed to parse log level directive")),
         )
         .init();
 
