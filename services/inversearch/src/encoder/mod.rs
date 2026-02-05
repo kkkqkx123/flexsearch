@@ -1,3 +1,9 @@
+mod transform;
+mod validator;
+
+pub use transform::*;
+pub use validator::EncoderValidator;
+
 use crate::r#type::EncoderOptions;
 use crate::error::Result;
 use regex::Regex;
@@ -22,8 +28,8 @@ pub struct Encoder {
     pub normalize: NormalizeOption,
     pub split: SplitOption,
     pub numeric: bool,
-    pub prepare: Option<Arc<dyn Fn(String) -> String + Send + Sync>>,
-    pub finalize: Option<Arc<dyn Fn(Vec<String>) -> Option<Vec<String>> + Send + Sync>>,
+    pub prepare: Option<Arc<dyn TextTransformer>>,
+    pub finalize: Option<Arc<dyn TokenFinalizer>>,
     pub filter: Option<FilterOption>,
     pub dedupe: bool,
     pub matcher: Option<HashMap<String, String>>,
@@ -39,7 +45,7 @@ pub struct Encoder {
 #[derive(Clone)]
 pub enum NormalizeOption {
     Bool(bool),
-    Function(Arc<dyn Fn(String) -> String + Send + Sync>),
+    Function(Arc<dyn TextTransformer>),
 }
 
 #[derive(Clone)]
@@ -52,7 +58,7 @@ pub enum SplitOption {
 #[derive(Clone)]
 pub enum FilterOption {
     Set(HashSet<String>),
-    Function(Arc<dyn Fn(&str) -> bool + Send + Sync>),
+    Function(Arc<dyn TextFilter>),
 }
 
 #[derive(Clone)]
@@ -65,14 +71,35 @@ pub struct Cache {
 }
 
 impl Encoder {
-    pub fn new(options: EncoderOptions) -> Self {
-        let normalize = match options.normalize {
+    pub fn new(options: EncoderOptions) -> Result<Self> {
+        // Validate configuration before creating encoder
+        EncoderValidator::validate(&options)?;
+        
+        // Clone options for later use to avoid borrowing issues
+        let options_clone = options.clone();
+        
+        // Extract values from options
+        let normalize_flag = options.normalize;
+        let split_string = options.split;
+        let numeric_flag = options.numeric;
+        let filter_vec = options.filter;
+        let dedupe_flag = options.dedupe;
+        let matcher_map = options.matcher;
+        let mapper_map = options.mapper;
+        let stemmer_map = options.stemmer;
+        let replacer_vec = options.replacer;
+        let minlength_val = options.minlength;
+        let maxlength_val = options.maxlength;
+        let rtl_flag = options.rtl;
+        let cache_flag = options.cache;
+        
+        let normalize = match normalize_flag {
             Some(true) => NormalizeOption::Bool(true),
             Some(false) => NormalizeOption::Bool(false),
             None => NormalizeOption::Bool(true),
         };
 
-        let split = if let Some(split) = options.split {
+        let split = if let Some(split) = split_string {
             if split.is_empty() {
                 SplitOption::String(String::new())
             } else {
@@ -82,9 +109,9 @@ impl Encoder {
             SplitOption::Regex(WHITESPACE.clone())
         };
 
-        let numeric = options.numeric.unwrap_or(true);
+        let numeric = numeric_flag.unwrap_or(true);
 
-        let filter = options.filter.map(|filter| {
+        let filter = filter_vec.map(|filter| {
             if filter.is_empty() {
                 FilterOption::Set(HashSet::new())
             } else {
@@ -92,13 +119,9 @@ impl Encoder {
             }
         });
 
-        let dedupe = options.dedupe.unwrap_or(true);
+        let dedupe = dedupe_flag.unwrap_or(true);
 
-        let matcher = options.matcher;
-        let mapper = options.mapper;
-        let stemmer = options.stemmer;
-
-        let replacer = options.replacer.map(|replacer| {
+        let replacer = replacer_vec.map(|replacer| {
             replacer
                 .into_iter()
                 .map(|(pattern, replacement)| {
@@ -112,11 +135,11 @@ impl Encoder {
                 .collect()
         });
 
-        let minlength = options.minlength.unwrap_or(1);
-        let maxlength = options.maxlength.unwrap_or(1024);
-        let rtl = options.rtl.unwrap_or(false);
+        let minlength = minlength_val.unwrap_or(1);
+        let maxlength = maxlength_val.unwrap_or(1024);
+        let rtl = rtl_flag.unwrap_or(false);
 
-        let cache = if options.cache.unwrap_or(true) {
+        let cache = if cache_flag.unwrap_or(true) {
             Some(Cache {
                 size: 200_000,
                 cache_enc: Arc::new(RwLock::new(lru::LruCache::unbounded())),
@@ -128,7 +151,7 @@ impl Encoder {
             None
         };
 
-        Encoder {
+        let encoder = Encoder {
             normalize,
             split,
             numeric,
@@ -136,15 +159,33 @@ impl Encoder {
             finalize: None,
             filter,
             dedupe,
-            matcher,
-            mapper,
-            stemmer,
+            matcher: matcher_map,
+            mapper: mapper_map,
+            stemmer: stemmer_map,
             replacer,
             minlength,
             maxlength,
             rtl,
             cache,
+        };
+
+        // Validate final transformer configuration
+        EncoderValidator::validate_transformers(
+            encoder.prepare.as_ref().map(|arc| arc.as_ref()),
+            encoder.finalize.as_ref().map(|arc| arc.as_ref()),
+            encoder.filter.as_ref().and_then(|opt| match opt {
+                FilterOption::Function(func) => Some(func.as_ref()),
+                _ => None,
+            }),
+        )?;
+
+        // Log optimization suggestions
+        let suggestions = EncoderValidator::suggest_optimizations(&options_clone);
+        for suggestion in suggestions {
+            tracing::debug!("Encoder optimization suggestion: {}", suggestion);
         }
+
+        Ok(encoder)
     }
 
     pub fn encode(&self, str: &str) -> Result<Vec<String>> {
@@ -163,7 +204,7 @@ impl Encoder {
         s = self.apply_normalize(&s);
 
         if let Some(prepare) = &self.prepare {
-            s = prepare(s);
+            s = prepare.transform(s);
         }
 
         if self.numeric && s.len() > 3 {
@@ -277,7 +318,7 @@ impl Encoder {
         }
 
         if let Some(finalize) = &self.finalize {
-            if let Some(result) = finalize(final_terms.clone()) {
+            if let Some(result) = finalize.finalize(final_terms.clone()) {
                 final_terms = result;
             }
         }
@@ -301,7 +342,7 @@ impl Encoder {
                     .to_lowercase()
             }
             NormalizeOption::Bool(false) => str.to_lowercase(),
-            NormalizeOption::Function(func) => func(str.to_string()),
+            NormalizeOption::Function(func) => func.transform(str.to_string()),
         }
     }
 
@@ -330,7 +371,7 @@ impl Encoder {
     fn apply_filter(&self, filter: &FilterOption, word: &str) -> bool {
         match filter {
             FilterOption::Set(set) => !set.contains(word),
-            FilterOption::Function(func) => func(word),
+            FilterOption::Function(func) => func.should_include(word),
         }
     }
 
@@ -477,11 +518,83 @@ impl Encoder {
             }
         }
     }
+
+    /// Set a custom text transformer for the prepare stage
+    pub fn set_prepare_transformer<T: TextTransformer + 'static>(&mut self, transformer: T) {
+        self.prepare = Some(Arc::new(transformer));
+        if let Some(cache) = &mut self.cache {
+            if let Ok(mut cache_enc) = cache.cache_enc.write() {
+                cache_enc.clear();
+            }
+            if let Ok(mut cache_term) = cache.cache_term.write() {
+                cache_term.clear();
+            }
+        }
+    }
+
+    /// Set a custom function-based text transformer for the prepare stage
+    pub fn set_prepare_function<F>(&mut self, func: F)
+    where
+        F: Fn(String) -> String + Send + Sync + 'static,
+    {
+        self.set_prepare_transformer(FunctionTransformer::new(func));
+    }
+
+    /// Set a custom token finalizer
+    pub fn set_finalize_transformer<T: TokenFinalizer + 'static>(&mut self, finalizer: T) {
+        self.finalize = Some(Arc::new(finalizer));
+        if let Some(cache) = &mut self.cache {
+            if let Ok(mut cache_enc) = cache.cache_enc.write() {
+                cache_enc.clear();
+            }
+            if let Ok(mut cache_term) = cache.cache_term.write() {
+                cache_term.clear();
+            }
+        }
+    }
+
+    /// Set a custom function-based token finalizer
+    pub fn set_finalize_function<F>(&mut self, func: F)
+    where
+        F: Fn(Vec<String>) -> Option<Vec<String>> + Send + Sync + 'static,
+    {
+        self.set_finalize_transformer(FunctionFinalizer::new(func));
+    }
+
+    /// Set a custom text filter
+    pub fn set_filter_transformer<T: TextFilter + 'static>(&mut self, filter: T) {
+        self.filter = Some(FilterOption::Function(Arc::new(filter)));
+        if let Some(cache) = &mut self.cache {
+            if let Ok(mut cache_enc) = cache.cache_enc.write() {
+                cache_enc.clear();
+            }
+            if let Ok(mut cache_term) = cache.cache_term.write() {
+                cache_term.clear();
+            }
+        }
+    }
+
+    /// Set a custom function-based text filter
+    pub fn set_filter_function<F>(&mut self, func: F)
+    where
+        F: Fn(&str) -> bool + Send + Sync + 'static,
+    {
+        self.set_filter_transformer(FunctionFilter::new(func));
+    }
+
+    /// Set a cached transformer for better performance
+    pub fn set_cached_prepare_transformer<T: TextTransformer + 'static>(
+        &mut self,
+        transformer: T,
+        max_cache_size: usize,
+    ) {
+        self.set_prepare_transformer(CachedTransformer::new(transformer, max_cache_size));
+    }
 }
 
 impl Default for Encoder {
     fn default() -> Self {
-        Encoder::new(EncoderOptions::default())
+        Encoder::new(EncoderOptions::default()).expect("Default encoder configuration should be valid")
     }
 }
 
@@ -526,7 +639,7 @@ mod tests {
             minlength: Some(3),
             ..Default::default()
         };
-        let encoder = Encoder::new(options);
+        let encoder = Encoder::new(options).unwrap();
         let result = encoder.encode("hi hello world").unwrap();
         assert_eq!(result, vec!["hello", "world"]);
     }
@@ -537,7 +650,7 @@ mod tests {
             dedupe: Some(true),
             ..Default::default()
         };
-        let encoder = Encoder::new(options);
+        let encoder = Encoder::new(options).unwrap();
         let result = encoder.encode("hello hello world world").unwrap();
         assert_eq!(result, vec!["hello", "world"]);
     }
@@ -548,8 +661,8 @@ mod tests {
             filter: Some(vec!["the".to_string(), "and".to_string()]),
             ..Default::default()
         };
-        let encoder = Encoder::new(options);
-        let result = encoder.encode("the cat and the dog").unwrap();
+        let encoder = Encoder::new(options).expect("Failed to create encoder");
+        let result = encoder.encode("the cat and the dog").expect("Failed to encode");
         assert_eq!(result, vec!["cat", "dog"]);
     }
 
@@ -559,8 +672,8 @@ mod tests {
         let mut stemmer = HashMap::new();
         stemmer.insert("ing".to_string(), "".to_string());
         options.stemmer = Some(stemmer);
-        let encoder = Encoder::new(options);
-        let result = encoder.encode("running jumping").unwrap();
+        let encoder = Encoder::new(options).expect("Failed to create encoder");
+        let result = encoder.encode("running jumping").expect("Failed to encode");
         assert_eq!(result, vec!["run", "jump"]);
     }
 
@@ -571,8 +684,8 @@ mod tests {
         let mut mapper = HashMap::new();
         mapper.insert('a', 'b');
         options.mapper = Some(mapper);
-        let encoder = Encoder::new(options);
-        let result = encoder.encode("apple").unwrap();
+        let encoder = Encoder::new(options).expect("Failed to create encoder");
+        let result = encoder.encode("apple").expect("Failed to encode");
         assert_eq!(result, vec!["bpple"]);
     }
 
@@ -582,8 +695,8 @@ mod tests {
         let mut matcher = HashMap::new();
         matcher.insert("color".to_string(), "colour".to_string());
         options.matcher = Some(matcher);
-        let encoder = Encoder::new(options);
-        let result = encoder.encode("color").unwrap();
+        let encoder = Encoder::new(options).expect("Failed to create encoder");
+        let result = encoder.encode("color").expect("Failed to encode");
         assert_eq!(result, vec!["colour"]);
     }
 
@@ -591,5 +704,64 @@ mod tests {
     fn test_fallback_encoder() {
         let result = fallback_encoder("Hello World");
         assert_eq!(result, vec!["hello", "world"]);
+    }
+
+    #[test]
+    fn test_trait_based_transformer() {
+        let mut encoder = Encoder::default();
+        
+        // Test custom prepare transformer
+        encoder.set_prepare_function(|text| text.replace("hello", "hi"));
+        let result = encoder.encode("hello world").expect("Failed to encode");
+        assert_eq!(result, vec!["hi", "world"]);
+    }
+
+    #[test]
+    fn test_trait_based_filter() {
+        let mut encoder = Encoder::default();
+        encoder.dedupe = false; // Disable deduplication for this test
+        
+        // Test custom filter
+        encoder.set_filter_function(|word| word.len() > 3);
+        let result = encoder.encode("hi hello world").expect("Failed to encode");
+        assert_eq!(result, vec!["hello", "world"]);
+    }
+
+    #[test]
+    fn test_trait_based_finalizer() {
+        let mut encoder = Encoder::default();
+        
+        // Test custom finalizer
+        encoder.set_finalize_function(|mut tokens| {
+            tokens.retain(|t| t != "world");
+            Some(tokens)
+        });
+        let result = encoder.encode("hello world").expect("Failed to encode");
+        assert_eq!(result, vec!["hello"]);
+    }
+
+    #[test]
+    fn test_validation_invalid_length() {
+        let options = EncoderOptions {
+            minlength: Some(10),
+            maxlength: Some(5),
+            ..Default::default()
+        };
+        
+        let result = Encoder::new(options);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_validation_large_filter() {
+        let mut options = EncoderOptions::default();
+        let mut filter = Vec::new();
+        for i in 0..10_001 {
+            filter.push(format!("word{}", i));
+        }
+        options.filter = Some(filter);
+        
+        let result = Encoder::new(options);
+        assert!(result.is_err());
     }
 }

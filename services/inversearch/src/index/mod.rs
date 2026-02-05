@@ -56,7 +56,7 @@ impl Index {
         let fastupdate = options.fastupdate.unwrap_or(false);
         let rtl = options.rtl.unwrap_or(false);
         
-        let encoder = Encoder::new(options.encoder.unwrap_or_default());
+        let encoder = Encoder::new(options.encoder.unwrap_or_default())?;
         
         let tokenize = match options.tokenize_mode {
             Some("strict") => TokenizeMode::Strict,

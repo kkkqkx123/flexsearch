@@ -1,5 +1,6 @@
 use crate::r#type::EncoderOptions;
 use crate::encoder::Encoder;
+use crate::error::Result;
 
 pub struct Tokenizer {
     pub encoder: Encoder,
@@ -15,12 +16,12 @@ pub enum TokenizerMode {
 }
 
 impl Tokenizer {
-    pub fn new(options: EncoderOptions) -> Self {
-        let encoder = Encoder::new(options);
-        Tokenizer {
+    pub fn new(options: EncoderOptions) -> Result<Self> {
+        let encoder = Encoder::new(options)?;
+        Ok(Tokenizer {
             encoder,
             mode: TokenizerMode::Strict,
-        }
+        })
     }
 
     pub fn set_mode(&mut self, mode: TokenizerMode) {
@@ -129,7 +130,7 @@ impl Tokenizer {
 
 impl Default for Tokenizer {
     fn default() -> Self {
-        Tokenizer::new(EncoderOptions::default())
+        Tokenizer::new(EncoderOptions::default()).expect("Default tokenizer creation should succeed")
     }
 }
 
