@@ -25,7 +25,7 @@ pub fn remove_document(index: &mut Index, id: DocId, skip_deletion: bool) -> Res
     Ok(())
 }
 
-fn get_fastupdate_refs(index: &Index, id: DocId) -> Option<Vec<(bool, String, Option<String>, usize)>> {
+fn get_fastupdate_refs(index: &Index, id: DocId) -> Option<Vec<crate::index::IndexRef>> {
     match &index.reg {
         crate::index::Register::Map(reg) => {
             let id_hash = index.keystore_hash_str(&id.to_string());
@@ -42,38 +42,45 @@ fn get_fastupdate_refs(index: &Index, id: DocId) -> Option<Vec<(bool, String, Op
 
 fn remove_fastupdate(
     index: &mut Index,
-    refs: Vec<(bool, String, Option<String>, usize)>,
+    refs: Vec<crate::index::IndexRef>,
     id: DocId,
 ) -> Result<()> {
-    for (is_ctx, term, keyword, score) in refs {
-        if is_ctx {
-            if let Some(kw) = keyword {
-                let kw_hash = index.keystore_hash_str(&kw);
-                if let Some(outer_map) = index.ctx.index.get_mut(&kw_hash) {
-                    if let Some(term_map) = outer_map.get_mut(&term) {
-                        if let Some(doc_ids_map) = term_map.get_mut(&score) {
-                            for (_, doc_ids) in doc_ids_map.iter_mut() {
-                                if let Some(pos) = doc_ids.iter().position(|x| x == &id) {
-                                    if doc_ids.len() > 1 {
-                                        doc_ids.remove(pos);
-                                    } else {
-                                        doc_ids.clear();
-                                    }
+    // 根据 JavaScript 版本的实现，我们直接操作存储在 reg 中的索引数组
+    // 通过 IndexRef 中的键信息来定位到对应的索引数组
+    for index_ref in refs {
+        match index_ref {
+            crate::index::IndexRef::MapRef(term) => {
+                let term_hash = index.keystore_hash_str(&term);
+                if let Some(term_map) = index.map.index.get_mut(&term_hash) {
+                    if let Some(doc_ids) = term_map.get_mut(&term) {
+                        // 检查数组最后一个元素是否是目标ID，如果是则直接移除（JavaScript 版本的优化）
+                        if doc_ids.last() == Some(&id) {
+                            doc_ids.pop();
+                        } else {
+                            // 否则查找并移除指定ID
+                            if let Some(pos) = doc_ids.iter().position(|x| x == &id) {
+                                if doc_ids.len() > 1 {
+                                    doc_ids.swap_remove(pos);
+                                } else {
+                                    doc_ids.clear();
                                 }
                             }
                         }
                     }
                 }
             }
-        } else {
-            let term_hash = index.keystore_hash_str(&term);
-            if let Some(outer_map) = index.map.index.get_mut(&term_hash) {
-                if let Some(term_map) = outer_map.get_mut(&term) {
-                    if let Some(doc_ids_map) = term_map.get_mut(&score.to_string()) {
-                        for (_, doc_ids) in doc_ids_map.iter_mut() {
+            crate::index::IndexRef::CtxRef(keyword, term) => {
+                let kw_hash = index.keystore_hash_str(&keyword);
+                if let Some(term_map) = index.ctx.index.get_mut(&kw_hash) {
+                    if let Some(doc_ids) = term_map.get_mut(&term) {
+                        // 检查数组最后一个元素是否是目标ID，如果是则直接移除（JavaScript 版本的优化）
+                        if doc_ids.last() == Some(&id) {
+                            doc_ids.pop();
+                        } else {
+                            // 否则查找并移除指定ID
                             if let Some(pos) = doc_ids.iter().position(|x| x == &id) {
                                 if doc_ids.len() > 1 {
-                                    doc_ids.remove(pos);
+                                    doc_ids.swap_remove(pos);
                                 } else {
                                     doc_ids.clear();
                                 }
@@ -88,35 +95,42 @@ fn remove_fastupdate(
 }
 
 fn remove_from_index(index: &mut Index, id: DocId) -> Result<()> {
-    for (_, outer_map) in index.map.index.iter_mut() {
-        for (_, term_map) in outer_map.iter_mut() {
-            for (_, doc_ids_map) in term_map.iter_mut() {
-                for (_, doc_ids) in doc_ids_map.iter_mut() {
-                    if let Some(pos) = doc_ids.iter().position(|x| x == &id) {
-                        if doc_ids.len() > 1 {
-                            doc_ids.remove(pos);
-                        } else {
-                            doc_ids.clear();
-                        }
-                    }
+    let mut terms_to_remove_map = Vec::new();
+    let mut terms_to_remove_ctx = Vec::new();
+    
+    for (term_hash, term_map) in index.map.index.iter_mut() {
+        for (term, doc_ids) in term_map.iter_mut() {
+            if let Some(pos) = doc_ids.iter().position(|x| *x == id) {
+                if doc_ids.len() > 1 {
+                    doc_ids.swap_remove(pos);
+                } else {
+                    terms_to_remove_map.push((term_hash.clone(), term.clone()));
                 }
             }
         }
     }
+    
+    for (term_hash, term) in terms_to_remove_map {
+        if let Some(map) = index.map.index.get_mut(&term_hash) {
+            map.remove(&term);
+        }
+    }
 
-    for (_, outer_map) in index.ctx.index.iter_mut() {
-        for (_, term_map) in outer_map.iter_mut() {
-            for (_, doc_ids_map) in term_map.iter_mut() {
-                for (_, doc_ids) in doc_ids_map.iter_mut() {
-                    if let Some(pos) = doc_ids.iter().position(|x| x == &id) {
-                        if doc_ids.len() > 1 {
-                            doc_ids.remove(pos);
-                        } else {
-                            doc_ids.clear();
-                        }
-                    }
+    for (term_hash, term_map) in index.ctx.index.iter_mut() {
+        for (term, doc_ids) in term_map.iter_mut() {
+            if let Some(pos) = doc_ids.iter().position(|x| *x == id) {
+                if doc_ids.len() > 1 {
+                    doc_ids.swap_remove(pos);
+                } else {
+                    terms_to_remove_ctx.push((term_hash.clone(), term.clone()));
                 }
             }
+        }
+    }
+    
+    for (term_hash, term) in terms_to_remove_ctx {
+        if let Some(map) = index.ctx.index.get_mut(&term_hash) {
+            map.remove(&term);
         }
     }
 

@@ -210,11 +210,11 @@ fn add_context(
                 Some(x - 1),
             );
 
-            let swap = index.bidirectional && context_term > keyword;
+            let swap = index.bidirectional && **context_term > *keyword;
             let (ctx_term, ctx_keyword) = if swap {
-                (keyword.as_str(), context_term.as_str())
+                (&keyword[..], &context_term[..])
             } else {
-                (context_term.as_str(), keyword.as_str())
+                (&context_term[..], &keyword[..])
             };
 
             index.push_index(dupes, ctx_term, context_score, id, append, Some(ctx_keyword));
@@ -239,7 +239,9 @@ pub fn get_score(
     if total_length <= resolution {
         i + offset
     } else {
-        ((resolution - 1) * (i + offset) / total_length + 1) as usize
+        // Match JavaScript implementation: ((resolution - 1) / total_length * (i + offset) + 1) | 0
+        let calculation = ((resolution - 1) as f64 / total_length as f64 * (i + offset) as f64 + 1.0) as usize;
+        calculation
     }
 }
 
@@ -251,7 +253,7 @@ mod tests {
     fn test_get_score() {
         assert_eq!(get_score(9, 10, 0, Some(5), None), 0);
         assert_eq!(get_score(9, 10, 1, Some(5), None), 1);
-        assert_eq!(get_score(9, 10, 5, Some(5), None), 4);
+        assert_eq!(get_score(9, 10, 5, Some(5), None), 3);
         assert_eq!(get_score(9, 100, 10, Some(5), None), 1);
     }
 

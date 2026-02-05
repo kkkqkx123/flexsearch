@@ -39,15 +39,15 @@ pub fn intersect(
             *count += 1;
 
             let slot_idx = *count;
-            if slot_idx >= result.len() {
+            if slot_idx > result.len() {
                 result.push(Vec::new());
             }
 
             if resolve {
-                result[slot_idx].push(id);
+                result[slot_idx - 1].push(id);
 
                 if limit > 0 && slot_idx == length - 1 {
-                    let slot = &result[slot_idx];
+                    let slot = &result[slot_idx - 1];
                     if slot.len() >= offset + limit {
                         let start = offset;
                         let end = std::cmp::min(start + limit, slot.len());
@@ -55,12 +55,12 @@ pub fn intersect(
                     }
                 }
             } else {
-                let score = y as i32 + if x > 0 || !suggest { 0 } else boost;
+                let score = y as i32 + if x > 0 || !suggest { 0 } else { boost };
                 let score_idx = score as usize;
-                if score_idx >= result[slot_idx].len() {
-                    result[slot_idx].resize(score_idx + 1, 0);
+                if score_idx >= result[slot_idx - 1].len() {
+                    result[slot_idx - 1].resize(score_idx + 1, 0);
                 }
-                result[slot_idx][score_idx] = id;
+                result[slot_idx - 1][score_idx] = id;
             }
         }
     }
@@ -126,7 +126,7 @@ pub fn union(
     for i in (0..arrays.len()).rev() {
         let ids = &arrays[i];
 
-        for &id in ids {
+        for &id in ids.iter().rev() {
             if check.contains_key(&id) {
                 continue;
             }

@@ -57,11 +57,7 @@ pub fn search(index: &Index, options: &SearchOptions) -> Result<SearchResult> {
         let arr = get_array(index, term, keyword);
 
         if let Some(arr) = arr {
-            let processed = add_result(arr, &result, suggest, resolution);
-            if let Some(processed) = processed {
-                result = processed;
-                break;
-            }
+            add_result(arr, &mut result, suggest, resolution);
         }
 
         if !keyword.is_empty() {
@@ -88,11 +84,7 @@ pub fn search(index: &Index, options: &SearchOptions) -> Result<SearchResult> {
             let arr = get_array(index, term, keyword);
 
             if let Some(arr) = arr {
-                let processed = add_result(arr, &result, suggest, resolution);
-                if let Some(processed) = processed {
-                    result = processed;
-                    break;
-                }
+                add_result(arr, &mut result, suggest, resolution);
             }
         }
     }
@@ -148,27 +140,13 @@ fn get_array(index: &Index, term: &str, keyword: &str) -> Option<IntermediateSea
 
     if !keyword.is_empty() {
         if let Some(ctx_map) = index.ctx.index.get(&index.keystore_hash_str(keyword)) {
-            if let Some(term_map) = ctx_map.get(term) {
-                let mut result = Vec::<Vec<DocId>>::new();
-                for (_, doc_ids) in term_map {
-                    result.push(doc_ids.clone());
-                }
-                if !result.is_empty() {
-                    return Some(result);
-                }
+            if let Some(doc_ids) = ctx_map.get(term) {
+                return Some(vec![doc_ids.clone()]);
             }
         }
     } else {
-        if let Some(term_map) = index.map.index.get(&index.keystore_hash_str(term)) {
-            if let Some(doc_ids_map) = term_map.get(term) {
-                let mut result = Vec::<Vec<DocId>>::new();
-                for (_, doc_ids) in doc_ids_map {
-                    result.push(doc_ids.clone());
-                }
-                if !result.is_empty() {
-                    return Some(result);
-                }
-            }
+        if let Some(doc_ids) = index.map.index.get(&index.keystore_hash_str(term)).and_then(|m| m.get(term)) {
+            return Some(vec![doc_ids.clone()]);
         }
     }
 
@@ -177,41 +155,32 @@ fn get_array(index: &Index, term: &str, keyword: &str) -> Option<IntermediateSea
 
 fn add_result(
     arr: IntermediateSearchResults,
-    result: &Vec<IntermediateSearchResults>,
+    result: &mut Vec<IntermediateSearchResults>,
     suggest: bool,
     resolution: usize,
-) -> Option<Vec<IntermediateSearchResults>> {
+) {
     if arr.is_empty() {
         if !suggest {
-            return Some(vec![]);
+            result.clear();
         }
-        return None;
+        return;
+    }
+
+    if arr.len() <= resolution {
+        result.push(arr);
+        return;
     }
 
     let mut word_arr: IntermediateSearchResults = Vec::new();
-
-    if arr.len() <= resolution {
-        let mut new_result = result.clone();
-        new_result.push(arr);
-        return None;
-    }
-
     for x in 0..resolution {
         if x < arr.len() {
             word_arr.push(arr[x].clone());
         }
     }
 
-    if word_arr.is_empty() {
-        if !suggest {
-            return Some(vec![]);
-        }
-        return None;
+    if !word_arr.is_empty() {
+        result.push(word_arr);
     }
-
-    let mut new_result = result.clone();
-    new_result.push(word_arr);
-    None
 }
 
 fn return_result(
@@ -276,11 +245,11 @@ pub fn resolve_default(arr: &IntermediateSearchResults, limit: usize, offset: us
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::r#type::IndexOptions;
+    use crate::index::IndexOptions;
 
     #[test]
     fn test_search_empty() {
-        let index = Index::new(IndexOptions::default()).unwrap();
+        let index = Index::new(crate::index::IndexOptions::default()).unwrap();
         let options = SearchOptions::default();
         let result = search(&index, &options).unwrap();
         assert_eq!(result.results.len(), 0);
@@ -288,7 +257,7 @@ mod tests {
 
     #[test]
     fn test_search_single_term() {
-        let mut index = Index::new(IndexOptions::default()).unwrap();
+        let mut index = Index::new(crate::index::IndexOptions::default()).unwrap();
         index.add(1, "hello world", false).unwrap();
         
         let options = SearchOptions {
@@ -303,7 +272,7 @@ mod tests {
 
     #[test]
     fn test_search_multiple_terms() {
-        let mut index = Index::new(IndexOptions::default()).unwrap();
+        let mut index = Index::new(crate::index::IndexOptions::default()).unwrap();
         index.add(1, "hello world", false).unwrap();
         index.add(2, "hello there", false).unwrap();
         

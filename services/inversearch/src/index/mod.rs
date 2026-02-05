@@ -13,18 +13,26 @@ pub enum TokenizeMode {
     Forward,
     Reverse,
     Full,
+    Bidirectional,
+}
+
+// 定义对索引数组的引用枚举，包含定位信息
+#[derive(Clone)]
+pub enum IndexRef {
+    MapRef(String),      // 普通索引的键
+    CtxRef(String, String),      // 上下文索引的键 (keyword, term)
 }
 
 #[derive(Clone)]
 pub enum Register {
     Set(KeystoreSet<DocId>),
-    Map(KeystoreMap<DocId, Vec<(bool, String, Option<String>, usize)>>),
+    Map(KeystoreMap<DocId, Vec<IndexRef>>),
 }
 
 #[derive(Clone)]
 pub struct Index {
-    pub map: KeystoreMap<String, HashMap<String, HashMap<usize, Vec<DocId>>>>,
-    pub ctx: KeystoreMap<String, HashMap<String, HashMap<usize, Vec<DocId>>>>,
+    pub map: KeystoreMap<String, Vec<DocId>>,
+    pub ctx: KeystoreMap<String, Vec<DocId>>,
     pub reg: Register,
     pub resolution: usize,
     pub resolution_ctx: usize,
@@ -131,66 +139,65 @@ impl Index {
         let term_key = term.to_string();
         let has_dupe = dupes.get(&term_key).copied().unwrap_or(false);
         let has_keyword_dupe = if let Some(kw) = keyword {
-            dupes.get(&term_key)
-                .and_then(|_| dupes.get(&kw.to_string()))
-                .copied()
-                .unwrap_or(false)
+            dupes.get(kw).copied().unwrap_or(false)
         } else {
             false
         };
 
         if !has_dupe || (keyword.is_some() && !has_keyword_dupe) {
+            dupes.insert(term_key.clone(), true);
             if let Some(kw) = keyword {
-                dupes.insert(term_key.clone(), true);
                 dupes.insert(kw.to_string(), true);
+            }
 
+            if let Some(kw) = keyword {
                 let kw_key = kw.to_string();
                 let kw_hash = self.keystore_hash_str(&kw_key);
-                
-                let ctx_map = self.ctx.index.entry(kw_hash).or_insert_with(HashMap::new);
-                
-                let term_map = ctx_map.entry(term_key.clone()).or_insert_with(HashMap::new);
-                
-                let doc_ids_map = term_map.entry(kw_key.clone()).or_insert_with(HashMap::new);
-                
-                let doc_ids = doc_ids_map.entry(score).or_insert_with(Vec::new);
+                let doc_ids_vec = self.ctx.index
+                    .entry(kw_hash)
+                    .or_insert_with(HashMap::new)
+                    .entry(term_key.clone())
+                    .or_insert_with(Vec::new);
 
-                if !append || !doc_ids.contains(&id) {
-                    doc_ids.push(id);
+                if !append || !doc_ids_vec.contains(&id) {
+                    doc_ids_vec.push(id);
 
                     if self.fastupdate {
+                        let id_hash = self.keystore_hash_str(&id.to_string());
                         if let Register::Map(reg) = &mut self.reg {
-                            let refs = reg.index.entry(self.keystore_hash_str(&id.to_string())).or_insert_with(HashMap::new);
-                            refs.entry(id).or_insert_with(Vec::new).push((true, kw_key, Some(term_key), score));
+                            let index_ref = IndexRef::CtxRef(kw_key, term_key.clone());
+
+                            reg.index
+                                .entry(id_hash)
+                                .or_insert_with(HashMap::new)
+                                .entry(id)
+                                .or_insert_with(Vec::new)
+                                .push(index_ref);
                         }
                     }
                 }
             } else {
-                dupes.insert(term_key.clone(), true);
-
-                let doc_ids_map = self.map.index
-                    .entry(self.keystore_hash_str(&term_key))
-                    .or_insert_with(HashMap::new);
-                
-                let doc_ids_map_inner = doc_ids_map
+                let term_hash = self.keystore_hash_str(&term_key);
+                let doc_ids_vec = self.map.index
+                    .entry(term_hash)
+                    .or_insert_with(HashMap::new)
                     .entry(term_key.clone())
-                    .or_insert_with(HashMap::new);
-
-                let doc_ids = doc_ids_map_inner
-                    .entry(score.to_string())
                     .or_insert_with(Vec::new);
 
-                if !append || !doc_ids.contains(&id) {
-                    doc_ids.push(id);
+                if !append || !doc_ids_vec.contains(&id) {
+                    doc_ids_vec.push(id);
 
                     if self.fastupdate {
+                        let id_hash = self.keystore_hash_str(&id.to_string());
                         if let Register::Map(reg) = &mut self.reg {
+                            let index_ref = IndexRef::MapRef(term_key.clone());
+
                             reg.index
-                                .entry(self.keystore_hash_str(&id.to_string()))
+                                .entry(id_hash)
                                 .or_insert_with(HashMap::new)
                                 .entry(id)
                                 .or_insert_with(Vec::new)
-                                .push((false, term_key, None, score));
+                                .push(index_ref);
                         }
                     }
                 }
@@ -243,9 +250,8 @@ pub struct IndexOptions {
     pub bidirectional: Option<bool>,
     pub fastupdate: Option<bool>,
     pub score: Option<ScoreFn>,
-    pub encoder: Option<crate::encoder::EncoderOptions>,
+    pub encoder: Option<crate::EncoderOptions>,
     pub rtl: Option<bool>,
-    pub tokenize: Option<crate::tokenizer::TokenizerOptions>,
 }
 
 impl Default for IndexOptions {
@@ -260,7 +266,6 @@ impl Default for IndexOptions {
             score: None,
             encoder: None,
             rtl: None,
-            tokenize: None,
         }
     }
 }

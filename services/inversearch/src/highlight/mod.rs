@@ -18,8 +18,10 @@ impl Highlighter {
         let template = options.template.clone();
         
         let markup_open_pos = template.find("$1")
-            .ok_or_else(|| crate::error::InversearchError::EncoderError(
-                "Invalid highlight template. The replacement pattern \"$1\" was not found".to_string()
+            .ok_or_else(|| crate::error::InversearchError::Encoder(
+                crate::error::EncoderError::Encoding(
+                    "Invalid highlight template. The replacement pattern \"$1\" was not found".to_string()
+                )
             ))?;
 
         let markup_open = template[..markup_open_pos].to_string();
@@ -169,29 +171,29 @@ impl Highlighter {
         let ellipsis = self.get_ellipsis();
         let ellipsis_length = ellipsis.len();
 
-        let boundary_length = boundary_total + markup_length - ellipsis_length * 2;
+        let boundary_length = (boundary_total + markup_length - ellipsis_length * 2) as i32;
         let length = pos_last_match - pos_first_match;
 
         if boundary_before > 0 || boundary_after > 0 || (str.len() - markup_length) > boundary_total {
             let start = if boundary_before > 0 {
-                pos_first_match - if boundary_before > 0 { boundary_before } else { 0 }
+                pos_first_match - boundary_before as i32
             } else {
                 pos_first_match - ((boundary_length - length) / 2)
             };
 
             let end = if boundary_after > 0 {
-                pos_last_match + if boundary_after > 0 { boundary_after } else { 0 }
+                pos_last_match + boundary_after as i32
             } else {
                 start + boundary_length
             };
 
-            let start = std::cmp::max(0, start) as usize;
-            let end = std::cmp::min(str.len(), end as usize);
+            let start_usize = std::cmp::max(0, start) as usize;
+            let end_usize = std::cmp::min(str.len(), end as usize);
 
-            let result = if start > 0 {
-                format!("{}{}{}", ellipsis, &str[start..end], if end < str.len() { ellipsis } else { "" })
+            let result = if start_usize > 0 {
+                format!("{}{}{}", ellipsis, &str[start_usize..end_usize], if end_usize < str.len() { ellipsis.clone() } else { String::new() })
             } else {
-                format!("{}{}", &str[start..end], if end < str.len() { ellipsis } else { "" })
+                format!("{}{}", &str[start_usize..end_usize], if end_usize < str.len() { ellipsis.clone() } else { String::new() })
             };
 
             Ok(result)

@@ -167,8 +167,8 @@ where
 
     pub fn keys(&self) -> Vec<T> {
         let mut keys = Vec::new();
-        for (_, set) in &self.index {
-            for key in set {
+        for vec in &self.refs {
+            for key in vec {
                 keys.push(key.clone());
             }
         }
@@ -202,26 +202,45 @@ where
     }
 
     pub fn push(&mut self, value: T) {
-        let address = self.size % (1 << self.bit);
-        let vec = self.index.entry(address).or_insert_with(Vec::new);
-        vec.push(value);
+        if self.refs.is_empty() {
+            self.refs.push(Vec::new());
+        }
+        self.refs.last_mut().unwrap().push(value);
         self.size += 1;
     }
 
     pub fn get(&self, index: usize) -> Option<&T> {
-        let address = index % (1 << self.bit);
-        self.index.get(&address).and_then(|vec| vec.get(index / (1 << self.bit)))
+        let mut global_index = 0;
+        for vec in &self.refs {
+            if index < global_index + vec.len() {
+                return Some(&vec[index - global_index]);
+            }
+            global_index += vec.len();
+        }
+        None
     }
 
     pub fn set(&mut self, index: usize, value: T) {
-        let address = index % (1 << self.bit);
-        let vec = self.index.entry(address).or_insert_with(Vec::new);
-        let vec_index = index / (1 << self.bit);
-        if vec_index < vec.len() {
-            vec[vec_index] = value;
+        let mut global_index = 0;
+        for vec in &mut self.refs {
+            if index < global_index + vec.len() {
+                vec[index - global_index] = value;
+                return;
+            }
+            global_index += vec.len();
+        }
+        // If index is beyond current size, extend with new arrays
+        while global_index <= index {
+            self.refs.push(Vec::new());
+            global_index += 1 << self.bit;
+        }
+        let last_vec = self.refs.last_mut().unwrap();
+        let local_index = index - (global_index - (1 << self.bit));
+        if local_index < last_vec.len() {
+            last_vec[local_index] = value;
         } else {
-            vec.resize(vec_index + 1, value.clone());
-            vec[vec_index] = value;
+            last_vec.resize(local_index + 1, value.clone());
+            last_vec[local_index] = value;
         }
     }
 
@@ -239,7 +258,7 @@ where
     where
         T: PartialEq,
     {
-        for (_, vec) in &self.index {
+        for vec in &self.refs {
             if vec.contains(value) {
                 return true;
             }
@@ -252,7 +271,7 @@ where
         T: PartialEq,
     {
         let mut global_index = 0;
-        for (_address, vec) in &self.index {
+        for vec in &self.refs {
             if let Some(local_index) = vec.iter().position(|x| x == value) {
                 return Some(global_index + local_index);
             }
@@ -266,11 +285,10 @@ where
             return None;
         }
         
-        let address = (self.size - 1) % (1 << self.bit);
-        if let Some(vec) = self.index.get_mut(&address) {
-            let result = vec.pop();
-            if vec.is_empty() {
-                self.index.remove(&address);
+        if let Some(last_vec) = self.refs.last_mut() {
+            let result = last_vec.pop();
+            if last_vec.is_empty() {
+                self.refs.pop();
             }
             self.size -= 1;
             result
@@ -286,7 +304,8 @@ where
         let mut result = Vec::new();
         let mut global_index = 0;
         
-        for (_address, vec) in &self.index {
+        // Iterate through refs in order to maintain correct sequence
+        for vec in &self.refs {
             for item in vec {
                 if global_index >= start && global_index < end {
                     result.push(item.clone());
@@ -362,7 +381,7 @@ mod tests {
         assert_eq!(arr.length(), 3);
         assert_eq!(arr.includes(&2), true);
         assert_eq!(arr.includes(&4), false);
-        assert_eq!(arr.index_of(&2), 1);
+        assert_eq!(arr.index_of(&2), Some(1));
 
         arr.push(4);
         assert_eq!(arr.length(), 4);

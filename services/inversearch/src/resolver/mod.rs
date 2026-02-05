@@ -73,11 +73,15 @@ impl Resolver {
                     continue;
                 }
 
-                if ids.len() <= remaining_offset {
-                    remaining_offset -= ids.len();
+                if remaining_offset > 0 {
+                    if ids.len() <= remaining_offset {
+                        remaining_offset -= ids.len();
+                    } else {
+                        final_result.push(ids[remaining_offset..].to_vec());
+                        remaining_offset = 0;
+                    }
                 } else {
-                    final_result.push(ids[remaining_offset..].to_vec());
-                    remaining_offset = 0;
+                    final_result.push(ids.clone());
                 }
             }
 
@@ -125,7 +129,10 @@ impl Resolver {
     pub fn and(&mut self, other: IntermediateSearchResults) -> &mut Self {
         if !self.result.is_empty() && !other.is_empty() {
             let resolution = 9;
-            let result = crate::intersect::intersect(&other, resolution, 100, 0, false, self.boostval, true);
+            let mut arrays = Vec::new();
+            arrays.extend(self.result.clone());
+            arrays.extend(other);
+            let result = crate::intersect::intersect(&arrays, resolution, 100, 0, false, self.boostval, true);
             self.result = vec![result];
         } else {
             self.result = vec![];
@@ -135,7 +142,10 @@ impl Resolver {
 
     pub fn or(&mut self, other: IntermediateSearchResults) -> &mut Self {
         if !self.result.is_empty() && !other.is_empty() {
-            let result = crate::intersect::union(&other, 100, 0, true, self.boostval);
+            let mut arrays = Vec::new();
+            arrays.extend(self.result.clone());
+            arrays.extend(other);
+            let result = crate::intersect::union(&arrays, 100, 0, true, self.boostval);
             self.result = vec![result];
         } else if self.result.is_empty() {
             self.result = other;
@@ -224,9 +234,10 @@ mod tests {
         ];
         let mut resolver = Resolver::new(result, None);
         resolver.offset(2);
-        assert_eq!(resolver.result.len(), 2);
+        assert_eq!(resolver.result.len(), 3);
         assert_eq!(resolver.result[0], vec![3]);
         assert_eq!(resolver.result[1], vec![4, 5]);
+        assert_eq!(resolver.result[2], vec![6]);
     }
 
     #[test]
@@ -293,7 +304,7 @@ mod tests {
 
     #[test]
     fn test_resolver_from_options() {
-        let index = Index::new(IndexOptions::default()).unwrap();
+        let index = Index::new(crate::index::IndexOptions::default()).unwrap();
         let options = SearchOptions {
             query: Some("test".to_string()),
             limit: Some(10),
