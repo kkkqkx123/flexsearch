@@ -3,7 +3,6 @@ package util
 import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
-	"os"
 	"sync"
 )
 
@@ -58,8 +57,8 @@ func NewLogger(level string, format string, output string) (*Logger, error) {
 
 	l := &Logger{
 		Logger: logger,
-		sugar: logger.Sugar(),
-		level: zapLevel,
+		sugar:  logger.Sugar(),
+		level:  zapLevel,
 	}
 
 	return l, nil

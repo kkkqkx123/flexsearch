@@ -39,10 +39,10 @@ func main() {
 
 	tracingConfig := &middleware.TracingConfig{
 		ServiceName: "api-gateway",
-		Enabled:    true,
-		SampleRate: 1.0,
+		Enabled:     true,
+		SampleRate:  1.0,
 	}
-	shutdownTracing, err := middleware.InitTracing(tracingConfig, logger)
+	shutdownTracing, err := middleware.InitTracing(tracingConfig, logger.Logger)
 	if err != nil {
 		logger.Warn("Failed to initialize tracing", zap.Error(err))
 	}
@@ -53,7 +53,7 @@ func main() {
 	}()
 
 	metrics := util.NewMetrics("api_gateway")
-	tracingMiddleware := middleware.NewTracingMiddleware(tracingConfig, logger)
+	tracingMiddleware := middleware.NewTracingMiddleware(tracingConfig, logger.Logger)
 
 	redisClient := redis.NewClient(&redis.Options{
 		Addr:     fmt.Sprintf("%s:%d", cfg.Redis.Host, cfg.Redis.Port),
@@ -69,9 +69,13 @@ func main() {
 		logger.Info("Connected to Redis successfully")
 	}
 
-	rateLimiter := util.NewRateLimiter(redisClient)
+	// Use enhanced rate limiter with burst capacity and tiers
+	enhancedRateLimitConfig := util.DefaultEnhancedRateLimitConfig()
+	enhancedRateLimitConfig.Enabled = cfg.RateLimit.Enabled
+	enhancedRateLimitConfig.DefaultLimit = cfg.RateLimit.DefaultLimit
+	rateLimiter := util.NewEnhancedRateLimiter(redisClient, enhancedRateLimitConfig)
 
-	coordinatorClient, err := client.NewCoordinatorClient(&cfg.Coordinator)
+	coordinatorClient, err := client.NewCircuitBreakerCoordinatorClient(&cfg.Coordinator)
 	if err != nil {
 		logger.Error("Failed to connect to coordinator", zap.Error(err))
 	} else {
@@ -84,9 +88,11 @@ func main() {
 	router := gin.New()
 
 	router.Use(gin.Recovery())
+	router.Use(middleware.RequestIDMiddleware())
 	router.Use(tracingMiddleware.Middleware())
-	router.Use(middleware.RequestLoggingMiddleware(logger))
-	router.Use(middleware.ErrorHandlerMiddleware(logger))
+	router.Use(middleware.RequestLoggingMiddleware(logger.Logger))
+	router.Use(middleware.ErrorHandlerMiddleware(logger.Logger))
+	router.Use(middleware.ResponseValidationMiddleware(logger.Logger, middleware.DefaultResponseValidationConfig()))
 
 	router.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
@@ -100,22 +106,25 @@ func main() {
 	}
 
 	if cfg.RateLimit.Enabled {
-		router.Use(middleware.RateLimitMiddleware(rateLimiter, middleware.RateLimitConfig{
-			Limit:  cfg.RateLimit.DefaultLimit,
-			Window: time.Minute,
-			ByUser: cfg.RateLimit.ByUser,
-			ByIP:   cfg.RateLimit.ByIP,
+		router.Use(middleware.EnhancedRateLimitMiddleware(rateLimiter, middleware.EnhancedRateLimitConfig{
+			Enabled:       cfg.RateLimit.Enabled,
+			DefaultLimit:  cfg.RateLimit.DefaultLimit,
+			DefaultBurst:  20, // Allow burst of 20 requests
+			DefaultWindow: "1m",
+			ByUser:        cfg.RateLimit.ByUser,
+			ByIP:          cfg.RateLimit.ByIP,
+			TierHeader:    "X-RateLimit-Tier",
 		}))
 	}
 
-	searchHandler := handler.NewSearchHandler(coordinatorClient, metrics, logger)
-	documentHandler := handler.NewDocumentHandler(coordinatorClient, metrics, logger)
-	indexHandler := handler.NewIndexHandler(coordinatorClient, metrics, logger)
-	healthHandler := handler.NewHealthHandler(coordinatorClient, cfg, logger)
+	searchHandler := handler.NewSearchHandler(coordinatorClient.CoordinatorClient, metrics, logger.Logger)
+	documentHandler := handler.NewDocumentHandler(coordinatorClient.CoordinatorClient, metrics, logger.Logger)
+	indexHandler := handler.NewIndexHandler(coordinatorClient.CoordinatorClient, metrics, logger.Logger)
+	healthHandler := handler.NewHealthHandler(coordinatorClient, cfg, logger.Logger)
 
 	v1 := router.Group("/api/v1")
 	{
-		auth := router.Group("")
+		auth := v1.Group("")
 		auth.Use(middleware.AuthMiddleware(jwtManager))
 		{
 			auth.POST("/search", searchHandler.Search)
@@ -137,6 +146,7 @@ func main() {
 
 	router.GET("/health", healthHandler.Check)
 	router.GET("/health/services", healthHandler.CheckServices)
+	router.GET("/health/circuit-breakers", healthHandler.CheckCircuitBreakers)
 
 	srv := &http.Server{
 		Addr:           fmt.Sprintf(":%d", cfg.Server.Port),

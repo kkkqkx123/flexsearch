@@ -5,8 +5,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/gin-gonic/gin"
 	"github.com/flexsearch/api-gateway/internal/util"
+	"github.com/gin-gonic/gin"
 )
 
 func init() {

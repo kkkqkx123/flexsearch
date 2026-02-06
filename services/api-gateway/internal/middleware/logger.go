@@ -5,7 +5,6 @@ import (
 
 	"github.com/flexsearch/api-gateway/internal/util"
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	"go.uber.org/zap"
 )
 
@@ -23,12 +22,7 @@ func (lm *LoggingMiddleware) Middleware() gin.HandlerFunc {
 		path := c.Request.URL.Path
 		query := c.Request.URL.RawQuery
 
-		requestID := c.GetHeader("X-Request-ID")
-		if requestID == "" {
-			requestID = uuid.New().String()
-		}
-		c.Set("request_id", requestID)
-		c.Header("X-Request-ID", requestID)
+		requestID := GetRequestID(c)
 
 		lm.logger.Infow("HTTP request started",
 			"method", c.Request.Method,
@@ -79,12 +73,7 @@ func RequestLoggingMiddleware(logger *zap.Logger) gin.HandlerFunc {
 		path := c.Request.URL.Path
 		query := c.Request.URL.RawQuery
 
-		requestID := c.GetHeader("X-Request-ID")
-		if requestID == "" {
-			requestID = uuid.New().String()
-		}
-		c.Set("request_id", requestID)
-		c.Header("X-Request-ID", requestID)
+		requestID := GetRequestID(c)
 
 		logger.Info("HTTP request started",
 			zap.String("method", c.Request.Method),
@@ -135,7 +124,6 @@ func ErrorHandlerMiddleware(logger *zap.Logger, config ...ErrorHandlerConfig) gi
 			err := c.Errors.Last()
 			logger.Error("Request error",
 				zap.String("error", err.Error()),
-				zap.String("type", err.Type.String()),
 				zap.String("path", c.Request.URL.Path),
 				zap.String("method", c.Request.Method),
 				zap.Int("status", c.Writer.Status()),

@@ -8,15 +8,15 @@ import (
 )
 
 type Metrics struct {
-	httpRequestsTotal   *prometheus.CounterVec
+	httpRequestsTotal    *prometheus.CounterVec
 	httpRequestsDuration *prometheus.HistogramVec
 	httpRequestsInFlight prometheus.Gauge
-	searchLatency       *prometheus.HistogramVec
-	documentOperations  *prometheus.CounterVec
-	indexOperations    *prometheus.CounterVec
-	errorCounter       *prometheus.CounterVec
-	startTime          time.Time
-	mu                 sync.RWMutex
+	searchLatency        *prometheus.HistogramVec
+	documentOperations   *prometheus.CounterVec
+	indexOperations      *prometheus.CounterVec
+	errorCounter         *prometheus.CounterVec
+	startTime            time.Time
+	mu                   sync.RWMutex
 }
 
 func NewMetrics(namespace string) *Metrics {
@@ -63,7 +63,7 @@ func NewMetrics(namespace string) *Metrics {
 			[]string{"operation", "status"},
 		),
 		indexOperations: promauto.NewCounterVec(
-			prometheus.HistogramOpts{
+			prometheus.CounterOpts{
 				Namespace: namespace,
 				Name:      "index_operations_total",
 				Help:      "Total number of index operations",

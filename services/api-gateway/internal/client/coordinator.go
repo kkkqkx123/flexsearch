@@ -10,18 +10,16 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/status"
 )
 
 type CoordinatorClient struct {
-	conn    *grpc.ClientConn
-	search  pb.SearchServiceClient
+	conn     *grpc.ClientConn
+	search   pb.SearchServiceClient
 	document pb.DocumentServiceClient
-	index   pb.IndexServiceClient
-	health  pb.HealthClient
-	tracer  trace.Tracer
+	index    pb.IndexServiceClient
+	health   pb.HealthClient
+	tracer   trace.Tracer
 }
 
 func NewCoordinatorClient(cfg *config.CoordinatorConfig) (*CoordinatorClient, error) {
@@ -38,9 +36,9 @@ func NewCoordinatorClient(cfg *config.CoordinatorConfig) (*CoordinatorClient, er
 		conn:     conn,
 		search:   pb.NewSearchServiceClient(conn),
 		document: pb.NewDocumentServiceClient(conn),
-		index:   pb.NewIndexServiceClient(conn),
-		health:  pb.NewHealthClient(conn),
-		tracer:  otel.Tracer("coordinator-client"),
+		index:    pb.NewIndexServiceClient(conn),
+		health:   pb.NewHealthClient(conn),
+		tracer:   otel.Tracer("coordinator-client"),
 	}, nil
 }
 
@@ -196,30 +194,4 @@ func (c *CoordinatorClient) HealthCheck(ctx context.Context, req *pb.HealthCheck
 	defer cancel()
 
 	return c.health.Check(ctx, req, opts...)
-}
-
-type GRPCError struct {
-	Code    codes.Code
-	Message string
-	Details string
-}
-
-func ConvertGRPCError(err error) *GRPCError {
-	if err == nil {
-		return nil
-	}
-
-	if st, ok := status.FromError(err); ok {
-		return &GRPCError{
-			Code:    st.Code(),
-			Message: st.Message(),
-			Details: st.Message(),
-		}
-	}
-
-	return &GRPCError{
-		Code:    codes.Unknown,
-		Message: err.Error(),
-		Details: err.Error(),
-	}
 }

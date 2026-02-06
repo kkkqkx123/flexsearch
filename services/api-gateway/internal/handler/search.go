@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"context"
 	"net/http"
 	"strconv"
 
@@ -17,10 +16,10 @@ import (
 )
 
 type SearchHandler struct {
-	client    *client.CoordinatorClient
-	metrics   *util.Metrics
-	logger    *zap.Logger
-	tracer    trace.Tracer
+	client  *client.CoordinatorClient
+	metrics *util.Metrics
+	logger  *zap.Logger
+	tracer  trace.Tracer
 }
 
 func NewSearchHandler(client *client.CoordinatorClient, metrics *util.Metrics, logger *zap.Logger) *SearchHandler {
@@ -75,10 +74,11 @@ func (h *SearchHandler) Search(c *gin.Context) {
 			zap.Error(err),
 			zap.String("query", req.Query))
 		h.metrics.IncrementCounter("search_errors_total", []string{"error_type:grpc"})
-		grpcErr := client.ConvertGRPCError(err)
-		c.JSON(h.mapGRPCStatusToHTTP(grpcErr.Code), model.ErrorResponse{
+		grpcErr := util.ConvertGRPCError(err)
+		c.JSON(grpcErr.HTTPStatus, model.ErrorResponse{
 			Code:    "SEARCH_FAILED",
 			Message: grpcErr.Message,
+			Details: grpcErr.Details,
 		})
 		return
 	}
@@ -86,9 +86,9 @@ func (h *SearchHandler) Search(c *gin.Context) {
 	results := make([]model.SearchResult, len(resp.Results))
 	for i, r := range resp.Results {
 		results[i] = model.SearchResult{
-			ID:        r.Id,
-			Score:     r.Score,
-			Fields:    r.Fields,
+			ID:         r.Id,
+			Score:      r.Score,
+			Fields:     r.Fields,
 			Highlights: r.Highlights,
 		}
 	}
@@ -96,14 +96,29 @@ func (h *SearchHandler) Search(c *gin.Context) {
 	h.metrics.IncrementCounter("search_success_total", []string{})
 	h.metrics.RecordHistogram("search_latency_seconds", float64(resp.TookMs)/1000, []string{})
 
-	c.JSON(http.StatusOK, model.SearchResponse{
+	searchResponse := model.SearchResponse{
 		Results:    results,
 		Total:      int(resp.Total),
 		Page:       int(resp.Page),
 		PageSize:   int(resp.PageSize),
 		TotalPages: int(resp.TotalPages),
 		TookMs:     resp.TookMs,
-	})
+	}
+
+	// Validate response before sending
+	if err := searchResponse.Validate(); err != nil {
+		h.logger.Error("Search response validation failed",
+			zap.Error(err),
+			zap.String("query", req.Query))
+		c.JSON(http.StatusInternalServerError, model.ErrorResponse{
+			Code:    "RESPONSE_VALIDATION_FAILED",
+			Message: "Internal server error",
+			Details: err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, searchResponse)
 }
 
 func (h *SearchHandler) SearchGet(c *gin.Context) {
@@ -135,9 +150,11 @@ func (h *SearchHandler) SearchGet(c *gin.Context) {
 		h.logger.Error("Search failed",
 			zap.Error(err),
 			zap.String("query", query))
-		c.JSON(http.StatusInternalServerError, model.ErrorResponse{
+		grpcErr := util.ConvertGRPCError(err)
+		c.JSON(grpcErr.HTTPStatus, model.ErrorResponse{
 			Code:    "SEARCH_FAILED",
-			Message: err.Error(),
+			Message: grpcErr.Message,
+			Details: grpcErr.Details,
 		})
 		return
 	}
@@ -145,30 +162,36 @@ func (h *SearchHandler) SearchGet(c *gin.Context) {
 	results := make([]model.SearchResult, len(resp.Results))
 	for i, r := range resp.Results {
 		results[i] = model.SearchResult{
-			ID:        r.Id,
-			Score:     r.Score,
-			Fields:    r.Fields,
+			ID:         r.Id,
+			Score:      r.Score,
+			Fields:     r.Fields,
 			Highlights: r.Highlights,
 		}
 	}
 
-	c.JSON(http.StatusOK, model.SearchResponse{
+	searchResponse := model.SearchResponse{
 		Results:    results,
 		Total:      int(resp.Total),
 		Page:       int(resp.Page),
 		PageSize:   int(resp.PageSize),
 		TotalPages: int(resp.TotalPages),
 		TookMs:     resp.TookMs,
-	})
-}
-
-func (h *SearchHandler) mapGRPCStatusToHTTP(code interface{}) int {
-	switch code {
-	case nil:
-		return http.StatusOK
-	default:
-		return http.StatusInternalServerError
 	}
+
+	// Validate response before sending
+	if err := searchResponse.Validate(); err != nil {
+		h.logger.Error("Search response validation failed",
+			zap.Error(err),
+			zap.String("query", query))
+		c.JSON(http.StatusInternalServerError, model.ErrorResponse{
+			Code:    "RESPONSE_VALIDATION_FAILED",
+			Message: "Internal server error",
+			Details: err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, searchResponse)
 }
 
 type DocumentHandler struct {
@@ -248,7 +271,7 @@ func (h *DocumentHandler) Get(c *gin.Context) {
 	)
 
 	grpcReq := &pb.GetDocumentRequest{
-		IndexId:   indexID,
+		IndexId:    indexID,
 		DocumentId: documentID,
 	}
 
@@ -395,9 +418,7 @@ func (h *DocumentHandler) Batch(c *gin.Context) {
 	)
 
 	docs := make([]map[string]string, len(req.Documents))
-	for i, d := range req.Documents {
-		docs[i] = d
-	}
+	copy(docs, req.Documents)
 
 	grpcReq := &pb.BatchDocumentsRequest{
 		IndexId:   req.IndexID,
@@ -423,9 +444,9 @@ func (h *DocumentHandler) Batch(c *gin.Context) {
 	h.metrics.IncrementCounter("document_success_total", []string{"operation:batch"})
 
 	c.JSON(http.StatusOK, model.BatchDocumentsResponse{
-		SuccessCount:  int(resp.SuccessCount),
-		FailureCount:  int(resp.FailureCount),
-		Errors:        resp.Errors,
+		SuccessCount: int(resp.SuccessCount),
+		FailureCount: int(resp.FailureCount),
+		Errors:       resp.Errors,
 	})
 }
 

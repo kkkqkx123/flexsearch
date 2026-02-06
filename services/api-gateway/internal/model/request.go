@@ -23,9 +23,9 @@ type SearchResponse struct {
 }
 
 type SearchResult struct {
-	ID        string            `json:"id"`
-	Score     float64           `json:"score"`
-	Fields    map[string]string `json:"fields"`
+	ID         string            `json:"id"`
+	Score      float64           `json:"score"`
+	Fields     map[string]string `json:"fields"`
 	Highlights map[string]string `json:"highlights,omitempty"`
 }
 

@@ -12,16 +12,16 @@ type Config struct {
 	Log         LogConfig         `mapstructure:"log"`
 	Redis       RedisConfig       `mapstructure:"redis"`
 	Coordinator CoordinatorConfig `mapstructure:"coordinator"`
-	JWT         JWTConfig        `mapstructure:"jwt"`
+	JWT         JWTConfig         `mapstructure:"jwt"`
 	RateLimit   RateLimitConfig   `mapstructure:"ratelimit"`
-	CORS        CORSConfig       `mapstructure:"cors"`
+	CORS        CORSConfig        `mapstructure:"cors"`
 }
 
 type ServerConfig struct {
-	Port        int    `mapstructure:"port"`
-	Mode        string `mapstructure:"mode"`
-	ReadTimeout int    `mapstructure:"read_timeout"`
-	WriteTimeout int   `mapstructure:"write_timeout"`
+	Port         int    `mapstructure:"port"`
+	Mode         string `mapstructure:"mode"`
+	ReadTimeout  int    `mapstructure:"read_timeout"`
+	WriteTimeout int    `mapstructure:"write_timeout"`
 }
 
 type LogConfig struct {
@@ -57,10 +57,10 @@ type RateLimitConfig struct {
 }
 
 type CORSConfig struct {
-	Enabled         bool     `mapstructure:"enabled"`
-	AllowOrigins    []string `mapstructure:"allow_origins"`
-	AllowMethods    []string `mapstructure:"allow_methods"`
-	AllowHeaders    []string `mapstructure:"allow_headers"`
+	Enabled          bool     `mapstructure:"enabled"`
+	AllowOrigins     []string `mapstructure:"allow_origins"`
+	AllowMethods     []string `mapstructure:"allow_methods"`
+	AllowHeaders     []string `mapstructure:"allow_headers"`
 	AllowCredentials bool     `mapstructure:"allow_credentials"`
 }
 

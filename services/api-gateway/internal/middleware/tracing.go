@@ -19,9 +19,9 @@ import (
 )
 
 type TracingConfig struct {
-	ServiceName    string
-	Enabled       bool
-	SampleRate    float64
+	ServiceName string
+	Enabled     bool
+	SampleRate  float64
 }
 
 type TracingMiddleware struct {

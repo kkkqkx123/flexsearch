@@ -2,7 +2,8 @@ package proto
 
 import (
 	"context"
-	"time"
+
+	"google.golang.org/grpc"
 )
 
 type SearchRequest struct {
@@ -20,18 +21,18 @@ type SearchRequest struct {
 
 type SearchResponse struct {
 	Results    []*SearchResult `json:"results"`
-	Total      int32          `json:"total"`
-	Page       int32          `json:"page"`
-	PageSize   int32          `json:"page_size"`
-	TotalPages int32          `json:"total_pages"`
-	TookMs     float64        `json:"took_ms"`
+	Total      int32           `json:"total"`
+	Page       int32           `json:"page"`
+	PageSize   int32           `json:"page_size"`
+	TotalPages int32           `json:"total_pages"`
+	TookMs     float64         `json:"took_ms"`
 }
 
 type SearchResult struct {
-	Id         string            `json:"id"`
-	Score      float64           `json:"score"`
-	Fields     map[string]string `json:"fields"`
-	Highlights map[string]string `json:"highlights"`
+	Id         string             `json:"id"`
+	Score      float64            `json:"score"`
+	Fields     map[string]string  `json:"fields"`
+	Highlights map[string]string  `json:"highlights"`
 	Explain    map[string]float64 `json:"explain"`
 }
 
@@ -163,36 +164,176 @@ type HealthCheckResponse struct {
 }
 
 type ServiceStatus struct {
-	Name       string `json:"name"`
-	Address    string `json:"address"`
-	Status     string `json:"status"`
-	LatencyMs  int64  `json:"latency_ms"`
-	LastCheck  string `json:"last_check"`
-	Message    string `json:"message"`
+	Name      string `json:"name"`
+	Address   string `json:"address"`
+	Status    string `json:"status"`
+	LatencyMs int64  `json:"latency_ms"`
+	LastCheck string `json:"last_check"`
+	Message   string `json:"message"`
 }
 
 type SearchServiceClient interface {
-	Search(ctx context.Context, in *SearchRequest, opts ...interface{}) (*SearchResponse, error)
+	Search(ctx context.Context, in *SearchRequest, opts ...grpc.CallOption) (*SearchResponse, error)
 }
 
 type DocumentServiceClient interface {
-	GetDocument(ctx context.Context, in *GetDocumentRequest, opts ...interface{}) (*DocumentResponse, error)
-	AddDocument(ctx context.Context, in *AddDocumentRequest, opts ...interface{}) (*AddDocumentResponse, error)
-	UpdateDocument(ctx context.Context, in *UpdateDocumentRequest, opts ...interface{}) (*UpdateDocumentResponse, error)
-	DeleteDocument(ctx context.Context, in *DeleteDocumentRequest, opts ...interface{}) (*DeleteDocumentResponse, error)
-	BatchDocuments(ctx context.Context, in *BatchDocumentsRequest, opts ...interface{}) (*BatchDocumentsResponse, error)
+	GetDocument(ctx context.Context, in *GetDocumentRequest, opts ...grpc.CallOption) (*DocumentResponse, error)
+	AddDocument(ctx context.Context, in *AddDocumentRequest, opts ...grpc.CallOption) (*AddDocumentResponse, error)
+	UpdateDocument(ctx context.Context, in *UpdateDocumentRequest, opts ...grpc.CallOption) (*UpdateDocumentResponse, error)
+	DeleteDocument(ctx context.Context, in *DeleteDocumentRequest, opts ...grpc.CallOption) (*DeleteDocumentResponse, error)
+	BatchDocuments(ctx context.Context, in *BatchDocumentsRequest, opts ...grpc.CallOption) (*BatchDocumentsResponse, error)
 }
 
 type IndexServiceClient interface {
-	CreateIndex(ctx context.Context, in *CreateIndexRequest, opts ...interface{}) (*CreateIndexResponse, error)
-	ListIndexes(ctx context.Context, in *ListIndexesRequest, opts ...interface{}) (*ListIndexesResponse, error)
-	GetIndex(ctx context.Context, in *GetIndexRequest, opts ...interface{}) (*GetIndexResponse, error)
-	DeleteIndex(ctx context.Context, in *DeleteIndexRequest, opts ...interface{}) (*DeleteIndexResponse, error)
-	RebuildIndex(ctx context.Context, in *RebuildIndexRequest, opts ...interface{}) (*RebuildIndexResponse, error)
+	CreateIndex(ctx context.Context, in *CreateIndexRequest, opts ...grpc.CallOption) (*CreateIndexResponse, error)
+	ListIndexes(ctx context.Context, in *ListIndexesRequest, opts ...grpc.CallOption) (*ListIndexesResponse, error)
+	GetIndex(ctx context.Context, in *GetIndexRequest, opts ...grpc.CallOption) (*GetIndexResponse, error)
+	DeleteIndex(ctx context.Context, in *DeleteIndexRequest, opts ...grpc.CallOption) (*DeleteIndexResponse, error)
+	RebuildIndex(ctx context.Context, in *RebuildIndexRequest, opts ...grpc.CallOption) (*RebuildIndexResponse, error)
 }
 
 type HealthClient interface {
-	Check(ctx context.Context, in *HealthCheckRequest, opts ...interface{}) (*HealthCheckResponse, error)
+	Check(ctx context.Context, in *HealthCheckRequest, opts ...grpc.CallOption) (*HealthCheckResponse, error)
+}
+
+type searchServiceClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewSearchServiceClient(cc grpc.ClientConnInterface) SearchServiceClient {
+	return &searchServiceClient{cc}
+}
+
+func (c *searchServiceClient) Search(ctx context.Context, in *SearchRequest, opts ...grpc.CallOption) (*SearchResponse, error) {
+	out := new(SearchResponse)
+	err := c.cc.Invoke(ctx, "/coordinator.SearchService/Search", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+type documentServiceClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewDocumentServiceClient(cc grpc.ClientConnInterface) DocumentServiceClient {
+	return &documentServiceClient{cc}
+}
+
+func (c *documentServiceClient) GetDocument(ctx context.Context, in *GetDocumentRequest, opts ...grpc.CallOption) (*DocumentResponse, error) {
+	out := new(DocumentResponse)
+	err := c.cc.Invoke(ctx, "/coordinator.DocumentService/GetDocument", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *documentServiceClient) AddDocument(ctx context.Context, in *AddDocumentRequest, opts ...grpc.CallOption) (*AddDocumentResponse, error) {
+	out := new(AddDocumentResponse)
+	err := c.cc.Invoke(ctx, "/coordinator.DocumentService/AddDocument", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *documentServiceClient) UpdateDocument(ctx context.Context, in *UpdateDocumentRequest, opts ...grpc.CallOption) (*UpdateDocumentResponse, error) {
+	out := new(UpdateDocumentResponse)
+	err := c.cc.Invoke(ctx, "/coordinator.DocumentService/UpdateDocument", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *documentServiceClient) DeleteDocument(ctx context.Context, in *DeleteDocumentRequest, opts ...grpc.CallOption) (*DeleteDocumentResponse, error) {
+	out := new(DeleteDocumentResponse)
+	err := c.cc.Invoke(ctx, "/coordinator.DocumentService/DeleteDocument", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *documentServiceClient) BatchDocuments(ctx context.Context, in *BatchDocumentsRequest, opts ...grpc.CallOption) (*BatchDocumentsResponse, error) {
+	out := new(BatchDocumentsResponse)
+	err := c.cc.Invoke(ctx, "/coordinator.DocumentService/BatchDocuments", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+type indexServiceClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewIndexServiceClient(cc grpc.ClientConnInterface) IndexServiceClient {
+	return &indexServiceClient{cc}
+}
+
+func (c *indexServiceClient) CreateIndex(ctx context.Context, in *CreateIndexRequest, opts ...grpc.CallOption) (*CreateIndexResponse, error) {
+	out := new(CreateIndexResponse)
+	err := c.cc.Invoke(ctx, "/coordinator.IndexService/CreateIndex", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *indexServiceClient) ListIndexes(ctx context.Context, in *ListIndexesRequest, opts ...grpc.CallOption) (*ListIndexesResponse, error) {
+	out := new(ListIndexesResponse)
+	err := c.cc.Invoke(ctx, "/coordinator.IndexService/ListIndexes", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *indexServiceClient) GetIndex(ctx context.Context, in *GetIndexRequest, opts ...grpc.CallOption) (*GetIndexResponse, error) {
+	out := new(GetIndexResponse)
+	err := c.cc.Invoke(ctx, "/coordinator.IndexService/GetIndex", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *indexServiceClient) DeleteIndex(ctx context.Context, in *DeleteIndexRequest, opts ...grpc.CallOption) (*DeleteIndexResponse, error) {
+	out := new(DeleteIndexResponse)
+	err := c.cc.Invoke(ctx, "/coordinator.IndexService/DeleteIndex", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *indexServiceClient) RebuildIndex(ctx context.Context, in *RebuildIndexRequest, opts ...grpc.CallOption) (*RebuildIndexResponse, error) {
+	out := new(RebuildIndexResponse)
+	err := c.cc.Invoke(ctx, "/coordinator.IndexService/RebuildIndex", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+type healthClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewHealthClient(cc grpc.ClientConnInterface) HealthClient {
+	return &healthClient{cc}
+}
+
+func (c *healthClient) Check(ctx context.Context, in *HealthCheckRequest, opts ...grpc.CallOption) (*HealthCheckResponse, error) {
+	out := new(HealthCheckResponse)
+	err := c.cc.Invoke(ctx, "/coordinator.Health/Check", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 type UnimplementedSearchServiceServer struct{}

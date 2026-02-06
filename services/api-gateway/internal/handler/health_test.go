@@ -13,7 +13,7 @@ func init() {
 }
 
 func TestHealthHandler_Check(t *testing.T) {
-	handler := NewHealthHandler()
+	handler := NewHealthHandler(nil, nil, nil)
 
 	router := gin.New()
 	router.GET("/health", handler.Check)
@@ -50,7 +50,7 @@ func TestHealthHandler_Check(t *testing.T) {
 }
 
 func TestHealthHandler_CheckServices(t *testing.T) {
-	handler := NewHealthHandler()
+	handler := NewHealthHandler(nil, nil, nil)
 
 	router := gin.New()
 	router.GET("/health/services", handler.CheckServices)
