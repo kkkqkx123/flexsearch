@@ -590,6 +590,39 @@ impl Encoder {
     ) {
         self.set_prepare_transformer(CachedTransformer::new(transformer, max_cache_size));
     }
+
+    /// 获取编码器选项
+    pub fn get_options(&self) -> crate::r#type::EncoderOptions {
+        crate::r#type::EncoderOptions {
+            rtl: Some(self.rtl),
+            dedupe: Some(self.dedupe),
+            split: match &self.split {
+                SplitOption::String(s) => Some(s.clone()),
+                SplitOption::Regex(_) => None,
+                SplitOption::Bool(_) => None,
+            },
+            numeric: Some(self.numeric),
+            normalize: Some(matches!(self.normalize, NormalizeOption::Bool(true))),
+            prepare: None,
+            finalize: None,
+            filter: match &self.filter {
+                Some(FilterOption::Set(set)) => Some(set.iter().cloned().collect()),
+                Some(FilterOption::Function(_)) => None,
+                None => None,
+            },
+            matcher: self.matcher.clone(),
+            mapper: self.mapper.clone(),
+            stemmer: self.stemmer.clone(),
+            replacer: self.replacer.as_ref().map(|r| {
+                r.iter().map(|(regex, replacement)| {
+                    (regex.as_str().to_string(), replacement.clone())
+                }).collect()
+            }),
+            minlength: Some(self.minlength),
+            maxlength: Some(self.maxlength),
+            cache: Some(self.cache.is_some()),
+        }
+    }
 }
 
 impl Default for Encoder {

@@ -14,6 +14,7 @@ mod field;
 mod tree;
 mod tag;
 mod batch;
+mod serialize;
 
 use crate::search;
 
@@ -21,6 +22,10 @@ pub use field::{Field, FieldConfig, FieldType, Fields};
 pub use tree::{parse_tree, TreePath};
 pub use tag::{TagSystem, TagConfig};
 pub use batch::{Batch, BatchOperation, BatchExecutor};
+pub use serialize::{
+    DocumentExportData, DocumentInfo, FieldExportData, FieldConfigExport,
+    TagExportData, StoreExportData, RegistryExportData,
+};
 
 use crate::{
     Index, IndexOptions, SearchOptions, SearchResult,
@@ -109,8 +114,8 @@ impl Document {
                     extract_simple(content, field_name).map(|v| (field_name.to_string(), v))
                 })
                 .collect();
-            let tags_refs: Vec<(&str, Value)> = tags.iter()
-                .map(|(s, v)| (s.as_str(), v.clone()))
+            let tags_refs: Vec<(&str, &Value)> = tags.iter()
+                .map(|(s, v)| (s.as_str(), v))
                 .collect();
             tag_system.add_tags(id, &tags_refs);
         }
@@ -261,6 +266,24 @@ impl Document {
     /// 获取字段引用
     pub fn field(&self, name: &str) -> Option<&Field> {
         self.name_to_index.get(name).map(|&idx| &self.fields[idx])
+    }
+
+    /// 执行批量操作
+    pub fn execute_batch(&mut self, batch: &crate::document::Batch) -> Result<()> {
+        for op in batch.operations() {
+            match op {
+                crate::document::BatchOperation::Add(id, content) => {
+                    self.add(*id, content)?;
+                }
+                crate::document::BatchOperation::Update(id, content) => {
+                    self.update(*id, content)?;
+                }
+                crate::document::BatchOperation::Remove(id) => {
+                    self.remove(*id)?;
+                }
+            }
+        }
+        Ok(())
     }
 }
 
@@ -433,9 +456,12 @@ mod tests {
         let mut doc = Document::new(config).unwrap();
         
         let mut batch = Batch::new(100);
-        batch.add(1, &json!({"title": "Doc 1"}));
-        batch.add(2, &json!({"title": "Doc 2"}));
-        batch.add(3, &json!({"title": "Doc 3"}));
+        let doc1 = json!({"title": "Doc 1"});
+        let doc2 = json!({"title": "Doc 2"});
+        let doc3 = json!({"title": "Doc 3"});
+        batch.add(1, &doc1);
+        batch.add(2, &doc2);
+        batch.add(3, &doc3);
         
         doc.execute_batch(&batch).unwrap();
         

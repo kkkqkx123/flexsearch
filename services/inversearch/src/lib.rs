@@ -100,7 +100,7 @@ pub use search::{
     multi_field_search,
 };
 pub use serialize::*;
-pub use storage::*;
+pub use storage::{StorageInterface, StorageInfo, MemoryStorage, FileStorage};
 pub use tokenizer::*;
 pub use async_::*;
 // Export specific types from r#type module to avoid conflicts

@@ -1,8 +1,8 @@
 use crate::r#type::{SearchResults, EnrichedSearchResults, DocId};
 use crate::error::Result;
 use crate::Index;
-use serde::{Serialize, Deserialize};
-use redis::{AsyncCommands, Client as RedisClient, Connection};
+use crate::storage::{StorageInfo, StorageInterface};
+use redis::{AsyncCommands, Client as RedisClient, aio::MultiplexedConnection};
 use std::collections::HashMap;
 use std::time::Duration;
 
@@ -33,22 +33,24 @@ pub struct RedisStorage {
 
 impl RedisStorage {
     pub async fn new(config: RedisStorageConfig) -> Result<Self> {
+        let key_prefix = config.key_prefix.clone();
         let client = RedisClient::open(config.url.as_str())
-            .map_err(|e| crate::error::Error::StorageError(e.to_string()))?;
+            .map_err(|e| crate::error::StorageError::Connection(e.to_string()))?;
 
         let mut conn = client
-            .get_connection_with_timeout(config.connection_timeout)
-            .map_err(|e| crate::error::Error::StorageError(e.to_string()))?;
+            .get_async_connection()
+            .await
+            .map_err(|e| crate::error::StorageError::Connection(e.to_string()))?;
 
         let _: String = redis::cmd("PING")
             .query_async(&mut conn)
             .await
-            .map_err(|e| crate::error::Error::StorageError(e.to_string()))?;
+            .map_err(|e| crate::error::StorageError::Connection(e.to_string()))?;
 
         Ok(Self {
             client,
             config,
-            key_prefix: config.key_prefix,
+            key_prefix,
         })
     }
 
@@ -68,10 +70,11 @@ impl RedisStorage {
         self.make_key(&format!("doc:{}", doc_id))
     }
 
-    async fn get_connection(&self) -> Result<Connection> {
+    async fn get_connection(&self) -> Result<MultiplexedConnection> {
         self.client
-            .get_connection()
-            .map_err(|e| crate::error::Error::StorageError(e.to_string()))
+            .get_multiplexed_async_connection()
+            .await
+            .map_err(|e| crate::error::StorageError::Connection(e.to_string()).into())
     }
 }
 
@@ -97,14 +100,14 @@ impl StorageInterface for RedisStorage {
             .arg(&pattern)
             .query_async(&mut conn)
             .await
-            .map_err(|e| crate::error::Error::StorageError(e.to_string()))?;
+            .map_err(|e| crate::error::StorageError::Connection(e.to_string()))?;
 
         if !keys.is_empty() {
             let _: () = redis::cmd("DEL")
                 .arg(keys.as_slice())
                 .query_async(&mut conn)
                 .await
-                .map_err(|e| crate::error::Error::StorageError(e.to_string()))?;
+                .map_err(|e| crate::error::StorageError::Connection(e.to_string()))?;
         }
 
         Ok(())
@@ -117,14 +120,14 @@ impl StorageInterface for RedisStorage {
             for (term_str, ids) in doc_ids {
                 let key = self.make_index_key(term_str);
                 let serialized = serde_json::to_string(ids)
-                    .map_err(|e| crate::error::Error::StorageError(e.to_string()))?;
+                    .map_err(|e| crate::error::StorageError::Serialization(e.to_string()))?;
 
                 let _: () = redis::cmd("SET")
                     .arg(&key)
                     .arg(&serialized)
                     .query_async(&mut conn)
                     .await
-                    .map_err(|e| crate::error::Error::StorageError(e.to_string()))?;
+                    .map_err(|e| crate::error::StorageError::Connection(e.to_string()))?;
             }
         }
 
@@ -132,14 +135,14 @@ impl StorageInterface for RedisStorage {
             for (ctx_term, doc_ids) in ctx_map {
                 let key = self.make_context_key("default", ctx_term);
                 let serialized = serde_json::to_string(doc_ids)
-                    .map_err(|e| crate::error::Error::StorageError(e.to_string()))?;
+                    .map_err(|e| crate::error::StorageError::Serialization(e.to_string()))?;
 
                 let _: () = redis::cmd("SET")
                     .arg(&key)
                     .arg(&serialized)
                     .query_async(&mut conn)
                     .await
-                    .map_err(|e| crate::error::Error::StorageError(e.to_string()))?;
+                    .map_err(|e| crate::error::StorageError::Connection(e.to_string()))?;
             }
         }
 
@@ -159,14 +162,14 @@ impl StorageInterface for RedisStorage {
             .arg(&redis_key)
             .query_async(&mut conn)
             .await
-            .map_err(|e| crate::error::Error::StorageError(e.to_string()))?;
+            .map_err(|e| crate::error::StorageError::Connection(e.to_string()))?;
 
         if serialized.is_empty() {
             return Ok(Vec::new());
         }
 
         let doc_ids: Vec<DocId> = serde_json::from_str(&serialized)
-            .map_err(|e| crate::error::Error::StorageError(e.to_string()))?;
+            .map_err(|e| crate::error::StorageError::Deserialization(e.to_string()))?;
 
         let start = offset.min(doc_ids.len());
         let end = if limit > 0 {
@@ -188,13 +191,13 @@ impl StorageInterface for RedisStorage {
                 .arg(&key)
                 .query_async(&mut conn)
                 .await
-                .map_err(|e| crate::error::Error::StorageError(e.to_string()))?;
+                .map_err(|e| crate::error::StorageError::Connection(e.to_string()))?;
 
             if !serialized.is_empty() {
                 results.push(crate::r#type::EnrichedSearchResult {
                     id,
                     doc: Some(serde_json::from_str(&serialized)
-                        .map_err(|e| crate::error::Error::StorageError(e.to_string()))?),
+                        .map_err(|e| crate::error::StorageError::Deserialization(e.to_string()))?),
                     highlight: None,
                 });
             }
@@ -211,7 +214,7 @@ impl StorageInterface for RedisStorage {
             .arg(&key)
             .query_async(&mut conn)
             .await
-            .map_err(|e| crate::error::Error::StorageError(e.to_string()))?;
+            .map_err(|e| crate::error::StorageError::Connection(e.to_string()))?;
 
         Ok(exists)
     }
@@ -225,7 +228,7 @@ impl StorageInterface for RedisStorage {
                 .arg(&key)
                 .query_async(&mut conn)
                 .await
-                .map_err(|e| crate::error::Error::StorageError(e.to_string()))?;
+                .map_err(|e| crate::error::StorageError::Connection(e.to_string()))?;
         }
 
         Ok(())
@@ -243,7 +246,7 @@ impl StorageInterface for RedisStorage {
             .arg(&pattern)
             .query_async(&mut conn)
             .await
-            .map_err(|e| crate::error::Error::StorageError(e.to_string()))?;
+            .map_err(|e| crate::error::StorageError::Connection(e.to_string()))?;
 
         Ok(StorageInfo {
             name: "RedisStorage".to_string(),

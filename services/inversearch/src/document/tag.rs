@@ -86,7 +86,7 @@ impl TagSystem {
     }
 
     /// 为文档添加标签
-    pub fn add_tags(&mut self, doc_id: DocId, tags: &[(&str, Value)]) {
+    pub fn add_tags(&mut self, doc_id: DocId, tags: &[(&str, &Value)]) {
         let mut doc_tag_list = Vec::new();
         
         for (field, value) in tags {
@@ -210,7 +210,7 @@ mod tests {
     #[test]
     fn test_add_and_query() {
         let mut tag_system = TagSystem::new();
-        tag_system.add_config_str("category", None);
+        tag_system.add_config_str("category".to_string(), None);
         
         tag_system.add_tags(1, &[("category", &json!("tech"))]);
         tag_system.add_tags(2, &[("category", &json!("science"))]);
@@ -225,7 +225,7 @@ mod tests {
     #[test]
     fn test_query_multi() {
         let mut tag_system = TagSystem::new();
-        tag_system.add_config_str("status", None);
+        tag_system.add_config_str("status".to_string(), None);
         
         tag_system.add_tags(1, &[("status", &json!("active"))]);
         tag_system.add_tags(2, &[("status", &json!("active"))]);
@@ -240,7 +240,7 @@ mod tests {
     #[test]
     fn test_remove_tags() {
         let mut tag_system = TagSystem::new();
-        tag_system.add_config_str("category", None);
+        tag_system.add_config_str("category".to_string(), None);
         
         tag_system.add_tags(1, &[("category", &json!("tech"))]);
         assert!(tag_system.query("category", "tech").is_some());
@@ -252,7 +252,7 @@ mod tests {
     #[test]
     fn test_with_filter() {
         let mut tag_system = TagSystem::new();
-        tag_system.add_config_str("category", Some(Box::new(|v| v != &json!("banned"))));
+        tag_system.add_config_str("category".to_string(), Some(Box::new(|v| v != &json!("banned"))));
         
         tag_system.add_tags(1, &[("category", &json!("tech"))]);
         tag_system.add_tags(2, &[("category", &json!("banned"))]);

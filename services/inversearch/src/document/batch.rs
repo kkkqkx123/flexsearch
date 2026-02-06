@@ -93,25 +93,29 @@ impl<'a> Batch<'a> {
 }
 
 /// 批量操作执行器
-pub struct BatchExecutor<'a, F>
+pub struct BatchExecutor<'a, A, U, R>
 where
-    F: FnMut(DocId, &Value) -> Result<(), crate::error::InversearchError>,
+    A: FnMut(DocId, &Value) -> Result<(), crate::error::InversearchError>,
+    U: FnMut(DocId, &Value) -> Result<(), crate::error::InversearchError>,
+    R: FnMut(DocId, &Value) -> Result<(), crate::error::InversearchError>,
 {
-    add_fn: F,
-    update_fn: F,
-    remove_fn: F,
+    add_fn: A,
+    update_fn: U,
+    remove_fn: R,
     _phantom: std::marker::PhantomData<&'a ()>,
 }
 
-impl<'a, F> BatchExecutor<'a, F>
+impl<'a, A, U, R> BatchExecutor<'a, A, U, R>
 where
-    F: FnMut(DocId, &Value) -> Result<(), crate::error::InversearchError>,
+    A: FnMut(DocId, &Value) -> Result<(), crate::error::InversearchError>,
+    U: FnMut(DocId, &Value) -> Result<(), crate::error::InversearchError>,
+    R: FnMut(DocId, &Value) -> Result<(), crate::error::InversearchError>,
 {
     /// 创建新的执行器
     pub fn new(
-        add_fn: F,
-        update_fn: F,
-        remove_fn: F,
+        add_fn: A,
+        update_fn: U,
+        remove_fn: R,
     ) -> Self {
         BatchExecutor {
             add_fn,
@@ -161,8 +165,10 @@ mod tests {
     fn test_batch_add() {
         let mut batch = Batch::new(100);
         
-        batch.add(1, &json!({"title": "Doc 1"}));
-        batch.add(2, &json!({"title": "Doc 2"}));
+        let doc1 = json!({"title": "Doc 1"});
+        let doc2 = json!({"title": "Doc 2"});
+        batch.add(1, &doc1);
+        batch.add(2, &doc2);
         
         assert_eq!(batch.len(), 2);
         assert!(!batch.is_empty());
@@ -172,7 +178,8 @@ mod tests {
     fn test_batch_update() {
         let mut batch = Batch::new(100);
         
-        batch.update(1, &json!({"title": "Updated"}));
+        let doc = json!({"title": "Updated"});
+        batch.update(1, &doc);
         
         assert_eq!(batch.len(), 1);
     }
@@ -191,8 +198,10 @@ mod tests {
     fn test_batch_mixed_operations() {
         let mut batch = Batch::new(100);
         
-        batch.add(1, &json!({"title": "New"}));
-        batch.update(2, &json!({"title": "Updated"}));
+        let doc1 = json!({"title": "New"});
+        let doc2 = json!({"title": "Updated"});
+        batch.add(1, &doc1);
+        batch.update(2, &doc2);
         batch.remove(3);
         
         assert_eq!(batch.len(), 3);
@@ -202,8 +211,10 @@ mod tests {
     fn test_batch_clear() {
         let mut batch = Batch::new(100);
         
-        batch.add(1, &json!({"title": "Doc 1"}));
-        batch.add(2, &json!({"title": "Doc 2"}));
+        let doc1 = json!({"title": "Doc 1"});
+        let doc2 = json!({"title": "Doc 2"});
+        batch.add(1, &doc1);
+        batch.add(2, &doc2);
         
         batch.clear();
         
@@ -214,8 +225,10 @@ mod tests {
     fn test_batch_drain() {
         let mut batch = Batch::new(100);
         
-        batch.add(1, &json!({"title": "Doc 1"}));
-        batch.add(2, &json!({"title": "Doc 2"}));
+        let doc1 = json!({"title": "Doc 1"});
+        let doc2 = json!({"title": "Doc 2"});
+        batch.add(1, &doc1);
+        batch.add(2, &doc2);
         
         let ops = batch.drain();
         
@@ -226,8 +239,10 @@ mod tests {
     #[test]
     fn test_batch_executor() {
         let mut batch = Batch::new(100);
-        batch.add(1, &json!({"title": "Doc 1"}));
-        batch.add(2, &json!({"title": "Doc 2"}));
+        let doc1 = json!({"title": "Doc 1"});
+        let doc2 = json!({"title": "Doc 2"});
+        batch.add(1, &doc1);
+        batch.add(2, &doc2);
         
         let mut add_count = 0;
         let mut update_count = 0;

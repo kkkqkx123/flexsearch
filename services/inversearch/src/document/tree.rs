@@ -47,39 +47,74 @@ pub enum TreePath {
 /// assert_eq!(result.len(), 2);
 /// ```
 pub fn parse_tree(key: &str, marker: &mut Vec<bool>) -> Vec<TreePath> {
-    let parts: Vec<&str> = key.split(':').collect();
     let mut result = Vec::new();
-
-    for part in parts {
-        let field = part.to_string();
-        
-        if let Some(start) = field.rfind('[') {
-            let end = field.len();
-            let index_part = &field[start+1..end-1];
-            let base_field = &field[..start];
+    let mut current = key;
+    
+    while !current.is_empty() {
+        if let Some(dot_pos) = current.find('.') {
+            let part = &current[..dot_pos];
+            current = &current[dot_pos + 1..];
             
-            if !base_field.is_empty() {
-                marker.push(true);
-            }
-            
-            if index_part.contains('-') && !index_part.starts_with('-') {
-                let range_parts: Vec<&str> = index_part.split('-').collect();
-                if range_parts.len() == 2 {
-                    let start_idx: usize = range_parts[0].parse().unwrap_or(0);
-                    let end_idx: usize = range_parts[1].parse().unwrap_or(0);
-                    result.push(TreePath::Range(start_idx, end_idx, base_field.to_string()));
-                } else {
-                    result.push(TreePath::Field(field));
+            if let Some(start) = part.rfind('[') {
+                let end = part.len();
+                let index_part = &part[start+1..end-1];
+                let base_field = &part[..start];
+                
+                if !base_field.is_empty() {
+                    marker.push(true);
                 }
-            } else if index_part.starts_with('-') {
-                let idx: usize = index_part[1..].parse().unwrap_or(0);
-                result.push(TreePath::NegativeIndex(idx, base_field.to_string()));
+                
+                if index_part.contains('-') && !index_part.starts_with('-') {
+                    let range_parts: Vec<&str> = index_part.split('-').collect();
+                    if range_parts.len() == 2 {
+                        let start_idx: usize = range_parts[0].parse().unwrap_or(0);
+                        let end_idx: usize = range_parts[1].parse().unwrap_or(0);
+                        result.push(TreePath::Range(start_idx, end_idx, base_field.to_string()));
+                    } else {
+                        result.push(TreePath::Field(part.to_string()));
+                    }
+                } else if index_part.starts_with('-') {
+                    let idx: usize = index_part[1..].parse().unwrap_or(0);
+                    result.push(TreePath::NegativeIndex(idx, base_field.to_string()));
+                } else {
+                    let idx: usize = index_part.parse().unwrap_or(0);
+                    result.push(TreePath::Index(idx, base_field.to_string()));
+                }
             } else {
-                let idx: usize = index_part.parse().unwrap_or(0);
-                result.push(TreePath::Index(idx, base_field.to_string()));
+                result.push(TreePath::Field(part.to_string()));
             }
         } else {
-            result.push(TreePath::Field(field));
+            let part = current;
+            current = "";
+            
+            if let Some(start) = part.rfind('[') {
+                let end = part.len();
+                let index_part = &part[start+1..end-1];
+                let base_field = &part[..start];
+                
+                if !base_field.is_empty() {
+                    marker.push(true);
+                }
+                
+                if index_part.contains('-') && !index_part.starts_with('-') {
+                    let range_parts: Vec<&str> = index_part.split('-').collect();
+                    if range_parts.len() == 2 {
+                        let start_idx: usize = range_parts[0].parse().unwrap_or(0);
+                        let end_idx: usize = range_parts[1].parse().unwrap_or(0);
+                        result.push(TreePath::Range(start_idx, end_idx, base_field.to_string()));
+                    } else {
+                        result.push(TreePath::Field(part.to_string()));
+                    }
+                } else if index_part.starts_with('-') {
+                    let idx: usize = index_part[1..].parse().unwrap_or(0);
+                    result.push(TreePath::NegativeIndex(idx, base_field.to_string()));
+                } else {
+                    let idx: usize = index_part.parse().unwrap_or(0);
+                    result.push(TreePath::Index(idx, base_field.to_string()));
+                }
+            } else {
+                result.push(TreePath::Field(part.to_string()));
+            }
         }
     }
     
@@ -95,12 +130,13 @@ pub fn extract_value(document: &Value, path: &[TreePath]) -> Option<String> {
             TreePath::Field(name) => {
                 current.get(name)?
             }
-            TreePath::Index(idx, _) => {
-                current.as_array()?.get(*idx)?
+            TreePath::Index(idx, field) => {
+                let arr = current.get(field)?.as_array()?;
+                arr.get(*idx)?
             }
-            TreePath::NegativeIndex(idx, _) => {
-                let arr = current.as_array()?;
-                let pos = arr.len().saturating_sub(*idx + 1);
+            TreePath::NegativeIndex(idx, field) => {
+                let arr = current.get(field)?.as_array()?;
+                let pos = arr.len().saturating_sub(*idx);
                 arr.get(pos)?
             }
             TreePath::Range(_, _, _) => {
@@ -130,24 +166,30 @@ pub fn path_exists(document: &Value, path: &[TreePath]) -> bool {
                     None => return false,
                 }
             }
-            TreePath::Index(idx, _) => {
-                match current.as_array() {
-                    Some(arr) => match arr.get(*idx) {
-                        Some(v) => v,
+            TreePath::Index(idx, field) => {
+                match current.get(field) {
+                    Some(v) => match v.as_array() {
+                        Some(arr) => match arr.get(*idx) {
+                            Some(v) => v,
+                            None => return false,
+                        },
                         None => return false,
                     },
                     None => return false,
                 }
             }
-            TreePath::NegativeIndex(idx, _) => {
-                match current.as_array() {
-                    Some(arr) => {
-                        let pos = arr.len().saturating_sub(*idx + 1);
-                        match arr.get(pos) {
-                            Some(v) => v,
-                            None => return false,
+            TreePath::NegativeIndex(idx, field) => {
+                match current.get(field) {
+                    Some(v) => match v.as_array() {
+                        Some(arr) => {
+                            let pos = arr.len().saturating_sub(*idx + 1);
+                            match arr.get(pos) {
+                                Some(v) => v,
+                                None => return false,
+                            }
                         }
-                    }
+                        None => return false,
+                    },
                     None => return false,
                 }
             }

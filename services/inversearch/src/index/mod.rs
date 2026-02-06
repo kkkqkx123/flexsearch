@@ -232,6 +232,15 @@ impl Index {
         (crc as usize) % (1 << 8)
     }
 
+    pub fn keystore_hash_static(id: &str) -> usize {
+        let id_str = id.to_string();
+        let mut crc: u32 = 0;
+        for c in id_str.chars() {
+            crc = (crc << 8) ^ (crc >> (32 - 8)) ^ (c as u32);
+        }
+        (crc as usize) % (1 << 8)
+    }
+
     pub fn update(&mut self, id: DocId, content: &str) -> Result<()> {
         self.remove(id, false)?;
         self.add(id, content, false)

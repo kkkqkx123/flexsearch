@@ -75,8 +75,9 @@ impl Future for AsyncIndexTask {
 }
 
 /// 异步索引包装器
+#[derive(Clone)]
 pub struct AsyncIndex {
-    index: std::sync::Arc<tokio::sync::RwLock<Index>>,
+    pub(crate) index: std::sync::Arc<tokio::sync::RwLock<Index>>,
 }
 
 impl AsyncIndex {
@@ -335,14 +336,6 @@ impl ConcurrentSearch {
 impl Default for ConcurrentSearch {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-impl Clone for AsyncIndex {
-    fn clone(&self) -> Self {
-        Self {
-            index: std::sync::Arc::clone(&self.index),
-        }
     }
 }
 

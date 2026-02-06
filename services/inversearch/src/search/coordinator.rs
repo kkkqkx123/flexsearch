@@ -393,6 +393,7 @@ mod tests {
         
         coordinator.add_field("title", 2.0);
         coordinator.add_field("content", 1.0);
+        coordinator.options.query = "Rust".to_string();
         
         let result = coordinator.search().unwrap();
         
@@ -408,13 +409,14 @@ mod tests {
         
         coordinator.add_field("title", 2.0);
         coordinator.add_field("content", 1.0);
+        coordinator.options.query = "Rust".to_string();
         
         let scored = coordinator.search_with_scores().unwrap();
         
         assert!(!scored.is_empty());
         // 文档1和3都包含 Rust
-        for s in scored {
-            assert!(s.score > 0.0);
+        for s in &scored {
+            assert!(s.1 > 0.0);
         }
     }
 
@@ -425,6 +427,7 @@ mod tests {
         coordinator.options.combine = CombineStrategy::Or;
         
         coordinator.add_field("title", 1.0);
+        coordinator.options.query = "Rust".to_string();
         
         let result = coordinator.search().unwrap();
         assert!(!result.results.is_empty());
@@ -437,6 +440,7 @@ mod tests {
         coordinator.options.combine = CombineStrategy::And;
         
         coordinator.add_field("title", 1.0);
+        coordinator.options.query = "Rust".to_string();
         
         let result = coordinator.search().unwrap();
         assert!(!result.results.is_empty());
@@ -448,6 +452,7 @@ mod tests {
         let mut coordinator = SearchCoordinator::new(&doc);
         
         coordinator.add_field("title", 1.0);
+        coordinator.options.query = "Rust".to_string();
         coordinator.options.limit = 1;
         
         let result = coordinator.search().unwrap();
@@ -460,6 +465,7 @@ mod tests {
         let mut coordinator = SearchCoordinator::new(&doc);
         
         coordinator.add_field("title", 1.0);
+        coordinator.options.query = "Rust".to_string();
         coordinator.options.limit = 10;
         coordinator.options.offset = 1;
         

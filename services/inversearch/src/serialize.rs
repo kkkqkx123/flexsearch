@@ -2,11 +2,17 @@
 //! 
 //! 提供索引的导入导出功能，支持JSON和二进制格式
 
+pub mod r#async;
+pub mod chunked;
+
 use crate::r#type::{SearchResults, IntermediateSearchResults};
 use crate::error::Result;
 use crate::Index;
 use serde::{Serialize, Deserialize};
 use std::collections::HashMap;
+
+pub use r#async::{AsyncSerializer, AsyncDocumentSerializer};
+pub use chunked::{ChunkedSerializer, ChunkData, ChunkDataType, ChunkDataProvider};
 
 /// 序列化配置
 #[derive(Debug, Clone)]
@@ -39,6 +45,7 @@ pub struct IndexExportData {
     pub version: String,
     pub created_at: String,
     pub index_info: IndexInfo,
+    pub config: IndexConfigExport,
     pub data: ExportData,
 }
 
@@ -77,6 +84,22 @@ pub enum IndexRefData {
     CtxRef(String, String),
 }
 
+/// 索引配置导出
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IndexConfigExport {
+    pub index_options: crate::r#type::IndexOptions,
+    pub encoder_options: crate::r#type::EncoderOptions,
+    pub tokenizer_config: TokenizerConfig,
+}
+
+/// 分词器配置
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TokenizerConfig {
+    pub mode: String,
+    pub separator: Option<String>,
+    pub normalize: bool,
+}
+
 impl Index {
     /// 导出索引数据
     pub fn export(&self, _config: &SerializeConfig) -> Result<IndexExportData> {
@@ -88,12 +111,18 @@ impl Index {
             bidirectional: self.bidirectional,
             fastupdate: self.fastupdate,
             rtl: self.rtl,
-            encoder_type: "default".to_string(), // TODO: 根据实际编码器类型设置
+            encoder_type: "default".to_string(),
         };
 
         let main_index = self.export_main_index();
         let context_index = self.export_context_index();
         let registry = self.export_registry();
+
+        let config_export = IndexConfigExport {
+            index_options: self.get_index_options(),
+            encoder_options: self.encoder.get_options(),
+            tokenizer_config: self.get_tokenizer_config(),
+        };
 
         let data = ExportData {
             main_index,
@@ -105,6 +134,7 @@ impl Index {
             version: "0.1.0".to_string(),
             created_at: chrono::Utc::now().to_rfc3339(),
             index_info,
+            config: config_export,
             data,
         })
     }
@@ -174,6 +204,9 @@ impl Index {
                 format!("Unsupported version: {}", data.version)
             ));
         }
+
+        // 应用导入的配置
+        self.apply_config(&data.config)?;
 
         // 清空当前索引
         self.clear();
@@ -312,6 +345,62 @@ impl Index {
         index.import(data, config)?;
         
         Ok(index)
+    }
+
+    /// 获取索引选项
+    fn get_index_options(&self) -> crate::r#type::IndexOptions {
+        crate::r#type::IndexOptions {
+            preset: None,
+            context: Some(crate::r#type::ContextOptions {
+                depth: Some(self.depth),
+                bidirectional: Some(self.bidirectional),
+                resolution: Some(self.resolution_ctx),
+            }),
+            encoder: None,
+            resolution: Some(self.resolution),
+            tokenize: Some(format!("{:?}", self.tokenize).to_lowercase()),
+            fastupdate: Some(self.fastupdate),
+            keystore: None,
+            rtl: Some(self.rtl),
+            cache: None,
+            commit: None,
+            priority: None,
+        }
+    }
+
+    /// 获取分词器配置
+    fn get_tokenizer_config(&self) -> TokenizerConfig {
+        TokenizerConfig {
+            mode: format!("{:?}", self.tokenize).to_lowercase(),
+            separator: None,
+            normalize: true,
+        }
+    }
+
+    /// 应用导入的配置
+    fn apply_config(&mut self, config: &IndexConfigExport) -> Result<()> {
+        self.resolution = config.index_options.resolution.unwrap_or(9);
+        self.resolution_ctx = config.index_options.context.as_ref()
+            .and_then(|c| c.resolution)
+            .unwrap_or(self.resolution);
+        self.depth = config.index_options.context.as_ref()
+            .and_then(|c| c.depth)
+            .unwrap_or(0);
+        self.bidirectional = config.index_options.context.as_ref()
+            .and_then(|c| c.bidirectional)
+            .unwrap_or(false);
+        self.fastupdate = config.index_options.fastupdate.unwrap_or(false);
+        self.rtl = config.index_options.rtl.unwrap_or(false);
+
+        self.tokenize = match config.tokenizer_config.mode.as_str() {
+            "strict" => crate::index::TokenizeMode::Strict,
+            "forward" => crate::index::TokenizeMode::Forward,
+            "reverse" => crate::index::TokenizeMode::Reverse,
+            "full" => crate::index::TokenizeMode::Full,
+            _ => crate::index::TokenizeMode::Strict,
+        };
+
+        Ok(())
     }
 }
 

@@ -7,10 +7,12 @@ use crate::error::Result;
 use crate::Index;
 use serde::{Serialize, Deserialize};
 use std::collections::HashMap;
+use async_trait::async_trait;
 
 pub mod redis;
 
 /// 存储接口 - 类似JavaScript版本的StorageInterface
+#[async_trait::async_trait]
 pub trait StorageInterface: Send + Sync {
     /// 挂载索引到存储
     async fn mount(&mut self, index: &Index) -> Result<()>;
@@ -83,6 +85,7 @@ impl Default for MemoryStorage {
     }
 }
 
+#[async_trait::async_trait]
 impl StorageInterface for MemoryStorage {
     async fn mount(&mut self, _index: &Index) -> Result<()> {
         Ok(())
@@ -291,6 +294,7 @@ impl FileStorage {
     }
 }
 
+#[async_trait::async_trait]
 impl StorageInterface for FileStorage {
     async fn mount(&mut self, _index: &Index) -> Result<()> {
         // 尝试从文件加载现有数据
