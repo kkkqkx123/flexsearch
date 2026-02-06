@@ -1,6 +1,8 @@
 pub mod charset;
 pub mod common;
+pub mod compress;
 pub mod config;
+pub mod document;
 pub mod encoder;
 pub mod error;
 pub mod highlight;
@@ -17,6 +19,23 @@ pub mod tokenizer;
 pub mod r#type;
 pub mod async_;
 
+// Re-export document types
+pub use document::{
+    Document,
+    DocumentConfig,
+    Field,
+    FieldConfig,
+    FieldType,
+    Fields,
+    parse_tree,
+    TreePath,
+    TagSystem,
+    TagConfig,
+    Batch,
+    BatchOperation,
+    BatchExecutor,
+};
+
 // Re-export charset modules with specific names to avoid conflicts
 pub use charset::{
     charset_exact, charset_normalize, charset_cjk,
@@ -26,6 +45,17 @@ pub use charset::{
     get_charset_cjk
 };
 pub use common::*;
+pub use compress::{
+    compress_string,
+    compress_string_with_options,
+    lcg,
+    lcg64,
+    lcg_for_number,
+    to_radix,
+    RadixTable,
+    CompressCache,
+    DEFAULT_CACHE_SIZE,
+};
 pub use config::*;
 pub use encoder::*;
 pub use error::*;
@@ -38,8 +68,37 @@ pub use index::*;
 pub use intersect::*;
 pub use keystore::*;
 pub use metrics::*;
-pub use resolver::*;
-pub use search::*;
+pub use resolver::{
+    Resolver,
+    resolve_default,
+    ResolverOptions,
+    ResolverError,
+    ResolverResult,
+    Handler,
+    intersect_and,
+    union_op,
+    exclusion,
+    xor_op,
+    combine_search_results,
+    AsyncResolver,
+    Enricher,
+};
+pub use search::{
+    search,
+    SearchResult,
+    single_term_query,
+    multi_term_search,
+    SingleTermResult,
+    SearchCache,
+    CachedSearch,
+    CacheStats,
+    CacheKeyGenerator,
+    resolve_default_search,
+    SearchCoordinator,
+    MultiFieldSearchOptions,
+    CombineStrategy,
+    multi_field_search,
+};
 pub use serialize::*;
 pub use storage::*;
 pub use tokenizer::*;

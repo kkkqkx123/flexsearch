@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 pub type DocId = u64;
 pub type ResolutionSlot = Vec<DocId>;
@@ -16,6 +16,7 @@ pub struct KeystoreMap<K, V> {
 impl<K, V> KeystoreMap<K, V>
 where
     K: std::hash::Hash + Eq + Clone + std::fmt::Display,
+    V: Clone,
 {
     pub fn new(bitlength: usize) -> Self {
         KeystoreMap {
@@ -28,7 +29,11 @@ where
 
     fn crc(&self, key: &K) -> usize {
         let key_str = key.to_string();
-        lcg(&key_str, self.bit as u32)
+        if self.bit > 32 {
+            lcg64(&key_str, self.bit as u32)
+        } else {
+            lcg(&key_str, self.bit as u32)
+        }
     }
 
     pub fn get(&self, key: &K) -> Option<&V> {
@@ -40,9 +45,10 @@ where
         let address = self.crc(&key);
         let map = self.index.entry(address).or_insert_with(HashMap::new);
         let old_size = map.len();
-        map.insert(key, value);
+        map.insert(key.clone(), value);
         if map.len() > old_size {
             self.size += 1;
+            self.refs.push(map.clone());
         }
     }
 
@@ -103,6 +109,24 @@ where
     pub fn size(&self) -> usize {
         self.size
     }
+
+    pub fn values_iter(&self) -> impl Iterator<Item = &V> + '_ {
+        self.index.values().flat_map(|map| map.values())
+    }
+
+    pub fn keys_iter(&self) -> impl Iterator<Item = &K> + '_ {
+        self.index.values().flat_map(|map| map.keys())
+    }
+
+    pub fn entries_iter(&self) -> impl Iterator<Item = (&K, &V)> + '_ {
+        self.index.values().flat_map(|map| map.iter())
+    }
+
+    pub fn destroy(&mut self) {
+        self.index.clear();
+        self.refs.clear();
+        self.size = 0;
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -128,16 +152,21 @@ where
 
     fn crc(&self, key: &T) -> usize {
         let key_str = key.to_string();
-        lcg(&key_str, self.bit as u32)
+        if self.bit > 32 {
+            lcg64(&key_str, self.bit as u32)
+        } else {
+            lcg(&key_str, self.bit as u32)
+        }
     }
 
     pub fn add(&mut self, key: T) {
         let address = self.crc(&key);
         let set = self.index.entry(address).or_insert_with(HashSet::new);
         let old_size = set.len();
-        set.insert(key);
+        set.insert(key.clone());
         if set.len() > old_size {
             self.size += 1;
+            self.refs.push(set.clone());
         }
     }
 
@@ -167,16 +196,36 @@ where
 
     pub fn keys(&self) -> Vec<T> {
         let mut keys = Vec::new();
-        for vec in &self.refs {
-            for key in vec {
+        for set in self.index.values() {
+            for key in set {
                 keys.push(key.clone());
             }
         }
         keys
     }
 
+    pub fn values(&self) -> Vec<T> {
+        let mut values = Vec::new();
+        for set in self.index.values() {
+            for value in set {
+                values.push(value.clone());
+            }
+        }
+        values
+    }
+
     pub fn size(&self) -> usize {
         self.size
+    }
+
+    pub fn values_iter(&self) -> impl Iterator<Item = &T> + '_ {
+        self.index.values().flat_map(|set| set.iter())
+    }
+
+    pub fn destroy(&mut self) {
+        self.index.clear();
+        self.refs.clear();
+        self.size = 0;
     }
 }
 
@@ -328,9 +377,13 @@ where
         }
         result
     }
-}
 
-use std::collections::HashSet;
+    pub fn destroy(&mut self) {
+        self.index.clear();
+        self.refs.clear();
+        self.size = 0;
+    }
+}
 
 fn lcg(key: &str, bit: u32) -> usize {
     let mut hash: u32 = 0;
@@ -338,6 +391,19 @@ fn lcg(key: &str, bit: u32) -> usize {
         hash = (hash << 8) ^ (hash >> (32 - 8)) ^ (c as u32);
     }
     (hash % (1 << bit)) as usize
+}
+
+fn lcg64(key: &str, bit: u32) -> usize {
+    let mut hash: u64 = 0;
+    for c in key.chars() {
+        hash = (hash << 8) ^ (hash >> (64 - 8)) ^ (c as u64);
+    }
+    (hash % (1 << bit)) as usize
+}
+
+fn lcg_for_number<T: Into<usize>>(num: T, bit: u32) -> usize {
+    let num_val: usize = num.into();
+    num_val & ((1 << bit) - 1)
 }
 
 #[cfg(test)]

@@ -1,15 +1,23 @@
 //! 搜索模块
 //!
-//! 提供搜索功能
+//! 提供搜索功能，包括单术语搜索、多术语搜索和多字段搜索协调
 
 mod single_term;
 mod cache;
+mod coordinator;
+mod multi_field;
 
 use crate::r#type::{IntermediateSearchResults, SearchResults, SearchOptions};
 use crate::error::Result;
 use crate::Index;
 pub use single_term::{single_term_query, multi_term_search, SingleTermResult};
 pub use cache::{SearchCache, CachedSearch, CacheStats, CacheKeyGenerator};
+pub use coordinator::{
+    SearchCoordinator,
+    MultiFieldSearchOptions,
+    CombineStrategy,
+};
+pub use multi_field::multi_field_search;
 
 /// 搜索结果结构体
 #[derive(Debug, Clone)]
@@ -74,7 +82,7 @@ pub fn search(index: &Index, options: &SearchOptions) -> Result<SearchResult> {
 }
 
 /// 默认解析函数（兼容函数）
-pub fn resolve_default(
+pub fn resolve_default_search(
     results: &IntermediateSearchResults,
     limit: usize,
     offset: usize,

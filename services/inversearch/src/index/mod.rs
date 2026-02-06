@@ -71,7 +71,7 @@ impl Index {
         let reg = if fastupdate {
             Register::Map(KeystoreMap::new(8))
         } else {
-            Register::Set(KeystoreSet::new(8))
+            Register::Set(KeystoreSet::<DocId>::new(8))
         };
 
         // 初始化缓存（可选）

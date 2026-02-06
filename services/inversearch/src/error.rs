@@ -61,6 +61,9 @@ pub enum InversearchError {
 
     #[error("Async error: {0}")]
     TokioError(String),
+
+    #[error("Duplicate field name: {0} at index {1}")]
+    DuplicateFieldName(String, usize),
 }
 
 #[derive(Debug, Error)]
@@ -76,6 +79,9 @@ pub enum IndexError {
 
     #[error("Encoding error: {0}")]
     Encoding(String),
+
+    #[error("Duplicate field name: {0} at index {1}")]
+    DuplicateFieldName(String, usize),
 }
 
 #[derive(Debug, Error)]
