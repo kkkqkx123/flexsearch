@@ -30,13 +30,6 @@ type LogConfig struct {
 	Output string `mapstructure:"output"`
 }
 
-type RedisConfig struct {
-	Host     string `mapstructure:"host"`
-	Port     int    `mapstructure:"port"`
-	Password string `mapstructure:"password"`
-	DB       int    `mapstructure:"db"`
-}
-
 type CoordinatorConfig struct {
 	Address string `mapstructure:"address"`
 	Timeout int    `mapstructure:"timeout"`

@@ -32,14 +32,6 @@ type GRPCConfig struct {
 	Timeout         time.Duration `mapstructure:"timeout"`
 }
 
-type RedisConfig struct {
-	Host     string `mapstructure:"host"`
-	Port     int    `mapstructure:"port"`
-	Password string `mapstructure:"password"`
-	DB       int    `mapstructure:"db"`
-	PoolSize int    `mapstructure:"pool_size"`
-}
-
 type CacheConfig struct {
 	Enabled         bool          `mapstructure:"enabled"`
 	DefaultTTL      time.Duration `mapstructure:"default_ttl"`

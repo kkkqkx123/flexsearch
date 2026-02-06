@@ -4,28 +4,25 @@ import (
 	"context"
 	"time"
 
-	"github.com/redis/go-redis/v9"
+	"github.com/flexsearch/metrics"
+	"github.com/flexsearch/redis"
 )
 
 type RedisClient struct {
-	client *redis.Client
+	client  *redis.Client
+	metrics *metrics.RedisMetrics
 }
 
-func NewRedisClient(addr string, password string, db int) (*RedisClient, error) {
-	client := redis.NewClient(&redis.Options{
-		Addr:     addr,
-		Password: password,
-		DB:       db,
-	})
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	if err := client.Ping(ctx).Err(); err != nil {
+func NewRedisClient(config *redis.Config) (*RedisClient, error) {
+	client, err := redis.NewClient(config)
+	if err != nil {
 		return nil, err
 	}
 
-	return &RedisClient{client: client}, nil
+	return &RedisClient{
+		client:  client,
+		metrics: metrics.NewRedisMetrics("api-gateway", "default"),
+	}, nil
 }
 
 func (r *RedisClient) Close() error {
@@ -37,57 +34,187 @@ func (r *RedisClient) Ping(ctx context.Context) error {
 }
 
 func (r *RedisClient) Get(ctx context.Context, key string) (string, error) {
-	return r.client.Get(ctx, key).Result()
+	start := time.Now()
+	result, err := r.client.Get(ctx, key).Result()
+	duration := time.Since(start).Seconds()
+
+	status := "success"
+	if err != nil && err != redis.Nil {
+		status = "error"
+	}
+
+	r.metrics.RecordOperation("get", status, duration)
+	return result, err
 }
 
 func (r *RedisClient) Set(ctx context.Context, key string, value interface{}, expiration time.Duration) error {
-	return r.client.Set(ctx, key, value, expiration).Err()
+	start := time.Now()
+	err := r.client.Set(ctx, key, value, expiration).Err()
+	duration := time.Since(start).Seconds()
+
+	status := "success"
+	if err != nil {
+		status = "error"
+	}
+
+	r.metrics.RecordOperation("set", status, duration)
+	return err
 }
 
 func (r *RedisClient) Del(ctx context.Context, keys ...string) error {
-	return r.client.Del(ctx, keys...).Err()
+	start := time.Now()
+	err := r.client.Del(ctx, keys...).Err()
+	duration := time.Since(start).Seconds()
+
+	status := "success"
+	if err != nil {
+		status = "error"
+	}
+
+	r.metrics.RecordOperation("del", status, duration)
+	return err
 }
 
 func (r *RedisClient) Incr(ctx context.Context, key string) (int64, error) {
-	return r.client.Incr(ctx, key).Result()
+	start := time.Now()
+	result, err := r.client.Incr(ctx, key).Result()
+	duration := time.Since(start).Seconds()
+
+	status := "success"
+	if err != nil {
+		status = "error"
+	}
+
+	r.metrics.RecordOperation("incr", status, duration)
+	return result, err
 }
 
 func (r *RedisClient) Expire(ctx context.Context, key string, expiration time.Duration) error {
-	return r.client.Expire(ctx, key, expiration).Err()
+	start := time.Now()
+	err := r.client.Expire(ctx, key, expiration).Err()
+	duration := time.Since(start).Seconds()
+
+	status := "success"
+	if err != nil {
+		status = "error"
+	}
+
+	r.metrics.RecordOperation("expire", status, duration)
+	return err
 }
 
 func (r *RedisClient) TTL(ctx context.Context, key string) (time.Duration, error) {
-	return r.client.TTL(ctx, key).Result()
+	start := time.Now()
+	result, err := r.client.TTL(ctx, key).Result()
+	duration := time.Since(start).Seconds()
+
+	status := "success"
+	if err != nil {
+		status = "error"
+	}
+
+	r.metrics.RecordOperation("ttl", status, duration)
+	return result, err
 }
 
 func (r *RedisClient) ZAdd(ctx context.Context, key string, members ...redis.Z) error {
-	return r.client.ZAdd(ctx, key, members...).Err()
+	start := time.Now()
+	err := r.client.ZAdd(ctx, key, members...).Err()
+	duration := time.Since(start).Seconds()
+
+	status := "success"
+	if err != nil {
+		status = "error"
+	}
+
+	r.metrics.RecordOperation("zadd", status, duration)
+	return err
 }
 
 func (r *RedisClient) ZRemRangeByScore(ctx context.Context, key, min, max string) error {
-	return r.client.ZRemRangeByScore(ctx, key, min, max).Err()
+	start := time.Now()
+	err := r.client.ZRemRangeByScore(ctx, key, min, max).Err()
+	duration := time.Since(start).Seconds()
+
+	status := "success"
+	if err != nil {
+		status = "error"
+	}
+
+	r.metrics.RecordOperation("zremrangebyscore", status, duration)
+	return err
 }
 
 func (r *RedisClient) ZCount(ctx context.Context, key, min, max string) (int64, error) {
-	return r.client.ZCount(ctx, key, min, max).Result()
+	start := time.Now()
+	result, err := r.client.ZCount(ctx, key, min, max).Result()
+	duration := time.Since(start).Seconds()
+
+	status := "success"
+	if err != nil {
+		status = "error"
+	}
+
+	r.metrics.RecordOperation("zcount", status, duration)
+	return result, err
 }
 
 func (r *RedisClient) ZRevRangeByScoreWithScores(ctx context.Context, key string, opt *redis.ZRangeBy) ([]redis.Z, error) {
-	return r.client.ZRevRangeByScoreWithScores(ctx, key, opt).Result()
+	start := time.Now()
+	result, err := r.client.ZRevRangeByScoreWithScores(ctx, key, opt).Result()
+	duration := time.Since(start).Seconds()
+
+	status := "success"
+	if err != nil {
+		status = "error"
+	}
+
+	r.metrics.RecordOperation("zrevrangebyscorewithscores", status, duration)
+	return result, err
 }
 
 func (r *RedisClient) Eval(ctx context.Context, script string, keys []string, args ...interface{}) (interface{}, error) {
-	return r.client.Eval(ctx, script, keys, args...).Result()
+	start := time.Now()
+	result, err := r.client.Eval(ctx, script, keys, args...).Result()
+	duration := time.Since(start).Seconds()
+
+	status := "success"
+	if err != nil {
+		status = "error"
+	}
+
+	r.metrics.RecordOperation("eval", status, duration)
+	return result, err
 }
 
 func (r *RedisClient) ScriptLoad(ctx context.Context, script string) (string, error) {
-	return r.client.ScriptLoad(ctx, script).Result()
+	start := time.Now()
+	result, err := r.client.ScriptLoad(ctx, script).Result()
+	duration := time.Since(start).Seconds()
+
+	status := "success"
+	if err != nil {
+		status = "error"
+	}
+
+	r.metrics.RecordOperation("scriptload", status, duration)
+	return result, err
 }
 
 func (r *RedisClient) EvalSha(ctx context.Context, sha1 string, keys []string, args ...interface{}) (interface{}, error) {
-	return r.client.EvalSha(ctx, sha1, keys, args...).Result()
+	start := time.Now()
+	result, err := r.client.EvalSha(ctx, sha1, keys, args...).Result()
+	duration := time.Since(start).Seconds()
+
+	status := "success"
+	if err != nil {
+		status = "error"
+	}
+
+	r.metrics.RecordOperation("evalsha", status, duration)
+	return result, err
 }
 
 func (r *RedisClient) Client() *redis.Client {
-	return r.client
+	return r.client.Client
 }

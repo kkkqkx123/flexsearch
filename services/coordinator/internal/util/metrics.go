@@ -1,10 +1,12 @@
 package util
 
 import (
+	"time"
+
+	"github.com/flexsearch/metrics"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"sync"
-	"time"
 )
 
 type Metrics struct {
@@ -13,12 +15,11 @@ type Metrics struct {
 	grpcRequestsInFlight prometheus.Gauge
 	queryLatency         *prometheus.HistogramVec
 	engineLatency        *prometheus.HistogramVec
-	cacheHits            prometheus.Counter
-	cacheMisses          prometheus.Counter
-	errorCounter         *prometheus.CounterVec
 	mergerLatency        *prometheus.HistogramVec
 	startTime            time.Time
 	mu                   sync.RWMutex
+	redisMetrics         *metrics.RedisMetrics
+	searchMetrics        *metrics.SearchMetrics
 }
 
 func NewMetrics(namespace string) *Metrics {
@@ -65,28 +66,6 @@ func NewMetrics(namespace string) *Metrics {
 			},
 			[]string{"engine", "operation"},
 		),
-		cacheHits: promauto.NewCounter(
-			prometheus.CounterOpts{
-				Namespace: namespace,
-				Name:      "cache_hits_total",
-				Help:      "Total number of cache hits",
-			},
-		),
-		cacheMisses: promauto.NewCounter(
-			prometheus.CounterOpts{
-				Namespace: namespace,
-				Name:      "cache_misses_total",
-				Help:      "Total number of cache misses",
-			},
-		),
-		errorCounter: promauto.NewCounterVec(
-			prometheus.CounterOpts{
-				Namespace: namespace,
-				Name:      "errors_total",
-				Help:      "Total number of errors",
-			},
-			[]string{"type", "location"},
-		),
 		mergerLatency: promauto.NewHistogramVec(
 			prometheus.HistogramOpts{
 				Namespace: namespace,
@@ -96,7 +75,9 @@ func NewMetrics(namespace string) *Metrics {
 			},
 			[]string{"strategy"},
 		),
-		startTime: time.Now(),
+		startTime:    time.Now(),
+		redisMetrics: metrics.NewRedisMetrics("coordinator", "default"),
+		searchMetrics: metrics.NewSearchMetrics("coordinator"),
 	}
 
 	return m
@@ -124,18 +105,15 @@ func (m *Metrics) RecordQueryLatency(queryType string, duration time.Duration) {
 
 func (m *Metrics) RecordEngineLatency(engine, operation string, duration time.Duration) {
 	m.engineLatency.WithLabelValues(engine, operation).Observe(duration.Seconds())
+	m.searchMetrics.RecordDuration(engine, duration.Seconds())
 }
 
-func (m *Metrics) IncrementCacheHit() {
-	m.cacheHits.Inc()
+func (m *Metrics) IncrementCacheHit(cacheType string) {
+	m.redisMetrics.RecordCacheHit(cacheType)
 }
 
-func (m *Metrics) IncrementCacheMiss() {
-	m.cacheMisses.Inc()
-}
-
-func (m *Metrics) IncrementError(errorType, location string) {
-	m.errorCounter.WithLabelValues(errorType, location).Inc()
+func (m *Metrics) IncrementCacheMiss(cacheType string) {
+	m.redisMetrics.RecordCacheMiss(cacheType)
 }
 
 func (m *Metrics) RecordMergerLatency(strategy string, duration time.Duration) {
@@ -146,10 +124,30 @@ func (m *Metrics) GetUptime() time.Duration {
 	return time.Since(m.startTime)
 }
 
-func (m *Metrics) GetCacheHitRate() float64 {
-	total := m.cacheHits.Add(0) + m.cacheMisses.Add(0)
-	if total == 0 {
-		return 0
-	}
-	return float64(m.cacheHits.Add(0)) / float64(total)
+func (m *Metrics) RecordRedisOperation(operation, status string, duration float64) {
+	m.redisMetrics.RecordOperation(operation, status, duration)
+}
+
+func (m *Metrics) RecordRedisConnection(active, idle int) {
+	m.redisMetrics.RecordConnection(active, idle)
+}
+
+func (m *Metrics) RecordSearchRequest(engine string) {
+	m.searchMetrics.RecordRequest(engine)
+}
+
+func (m *Metrics) RecordSearchResults(engine string, count float64) {
+	m.searchMetrics.RecordResults(engine, count)
+}
+
+func (m *Metrics) RecordSearchError(engine, errorType string) {
+	m.searchMetrics.RecordError(engine, errorType)
+}
+
+func (m *Metrics) RedisMetrics() *metrics.RedisMetrics {
+	return m.redisMetrics
+}
+
+func (m *Metrics) SearchMetrics() *metrics.SearchMetrics {
+	return m.searchMetrics
 }

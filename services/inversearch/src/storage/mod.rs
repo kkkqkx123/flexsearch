@@ -1,5 +1,5 @@
 //! 存储接口模块
-//! 
+//!
 //! 提供持久化存储的抽象接口和实现
 
 use crate::r#type::{SearchResults, EnrichedSearchResults, DocId};
@@ -7,6 +7,8 @@ use crate::error::Result;
 use crate::Index;
 use serde::{Serialize, Deserialize};
 use std::collections::HashMap;
+
+pub mod redis;
 
 /// 存储接口 - 类似JavaScript版本的StorageInterface
 pub trait StorageInterface: Send + Sync {
