@@ -1,248 +1,126 @@
-//! 解析器模块
-//! 
+//! Resolver模块
+//!
 //! 提供搜索结果的解析和处理功能
+//!
+//! # 模块结构
+//!
+//! - `resolver.rs`: 主Resolver结构体和核心方法
+//! - `handler.rs`: 集合操作处理器(and/or/xor/not)
+//! - `and.rs`: 交集操作
+//! - `or.rs`: 并集操作
+//! - `not.rs`: 差集操作
+//! - `xor.rs`: 异或操作
+//! - `combine.rs`: 结果合并工具
+//! - `async_resolver.rs`: 异步Resolver支持
+//! - `enrich.rs`: 结果丰富化功能
 
-use crate::r#type::{IntermediateSearchResults, SearchResults, SearchOptions};
-use crate::error::Result;
-use crate::search::resolve_default;
+mod resolver;
+mod handler;
+mod and;
+mod or;
+mod not;
+mod xor;
+mod combine;
+mod async_resolver;
+mod enrich;
 
-/// 解析器结构体
-#[derive(Clone)]
-pub struct Resolver {
-    pub index: Option<crate::Index>,
-    pub result: IntermediateSearchResults,
-    pub boostval: i32,
-    pub resolved: bool,
-}
-
-impl std::fmt::Debug for Resolver {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Resolver")
-            .field("index", &self.index.as_ref().map(|_| "Index"))
-            .field("result", &self.result)
-            .field("boostval", &self.boostval)
-            .field("resolved", &self.resolved)
-            .finish()
-    }
-}
-
-impl Resolver {
-    /// 创建新的解析器
-    pub fn new(result: IntermediateSearchResults, index: Option<crate::Index>) -> Self {
-        Resolver {
-            index,
-            result,
-            boostval: 0,
-            resolved: false,
-        }
-    }
-
-    /// 从搜索选项创建解析器
-    pub fn from_options(options: &SearchOptions, index: &crate::Index) -> Result<Self> {
-        let boost = options.boost.unwrap_or(0);
-        let result = if let Some(_query) = &options.query {
-            // 简化实现：直接返回空结果
-            vec![]
-        } else {
-            vec![]
-        };
-
-        Ok(Resolver {
-            index: Some(index.clone()),
-            result,
-            boostval: boost,
-            resolved: false,
-        })
-    }
-
-    /// 设置限制
-    pub fn limit(&mut self, limit: usize) -> &mut Self {
-        if !self.result.is_empty() {
-            let mut final_result: IntermediateSearchResults = Vec::new();
-            let mut remaining_limit = limit;
-
-            for ids in &self.result {
-                if ids.is_empty() {
-                    continue;
-                }
-
-                if ids.len() <= remaining_limit {
-                    final_result.push(ids.clone());
-                    remaining_limit -= ids.len();
-                } else {
-                    final_result.push(ids[..remaining_limit].to_vec());
-                    break;
-                }
-            }
-
-            self.result = final_result;
-        }
-        self
-    }
-
-    /// 获取解析后的结果
-    pub fn get(&mut self) -> SearchResults {
-        if !self.resolved {
-            self.resolved = true;
-            
-            if self.result.is_empty() {
-                return Vec::new();
-            }
-            
-            // 展平结果
-            let mut flattened = Vec::new();
-            for array in &self.result {
-                flattened.extend_from_slice(array);
-            }
-            
-            flattened
-        } else {
-            Vec::new()
-        }
-    }
-
-    /// 交集操作
-    pub fn and(&mut self, other: IntermediateSearchResults) -> &mut Self {
-        if !self.result.is_empty() && !other.is_empty() {
-            // 使用兼容的交集函数
-            let current = self.result.clone();
-            let arrays = vec![current, other];
-            
-            let simple_arrays: Vec<Vec<u64>> = arrays.into_iter().flatten().collect();
-            let intersection_result = crate::intersect::core::intersect_simple(&simple_arrays);
-            
-            self.result = vec![intersection_result];
-        } else if !self.result.is_empty() {
-            // 保持不变
-        } else if !other.is_empty() {
-            self.result = other;
-        }
-        self
-    }
-
-    /// 并集操作
-    pub fn or(&mut self, other: IntermediateSearchResults) -> &mut Self {
-        if !self.result.is_empty() && !other.is_empty() {
-            // 合并结果
-            let mut combined = self.result.clone();
-            combined.extend(other);
-            
-            // 去重
-            let mut seen = std::collections::HashMap::new();
-            let mut unique_result = Vec::new();
-            
-            for array in combined {
-                let mut unique_array = Vec::new();
-                for &id in &array {
-                    if !seen.contains_key(&id) {
-                        seen.insert(id, true);
-                        unique_array.push(id);
-                    }
-                }
-                if !unique_array.is_empty() {
-                    unique_result.push(unique_array);
-                }
-            }
-            
-            self.result = unique_result;
-        } else if self.result.is_empty() {
-            self.result = other;
-        }
-        self
-    }
-
-    /// 差集操作
-    pub fn not(&mut self, other: IntermediateSearchResults) -> &mut Self {
-        if !self.result.is_empty() {
-            let current_flat = resolve_default(&self.result, 100, 0);
-            let other_flat = resolve_default(&other, 100, 0);
-            
-            let mut result: SearchResults = Vec::new();
-            let mut check = std::collections::HashMap::new();
-
-            for &id in &other_flat {
-                check.insert(id, true);
-            }
-
-            for &id in &current_flat {
-                if !check.contains_key(&id) {
-                    result.push(id);
-                }
-            }
-
-            self.result = vec![result];
-        }
-        self
-    }
-}
-
-impl Default for Resolver {
-    fn default() -> Self {
-        Resolver {
-            index: None,
-            result: vec![],
-            boostval: 0,
-            resolved: false,
-        }
-    }
-}
+pub use resolver::{
+    Resolver,
+    resolve_default,
+    ResolverOptions,
+    ResolverError,
+    ResolverResult,
+};
+pub use handler::Handler;
+pub use and::intersect_and;
+pub use or::union_op;
+pub use not::exclusion;
+pub use xor::xor_op;
+pub use combine::combine_search_results;
+pub use async_resolver::AsyncResolver;
+pub use enrich::Enricher;
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::r#type::{IntermediateSearchResults, SearchOptions};
 
     #[test]
-    fn test_resolver_new() {
+    fn test_resolver_chain_operations() {
+        let mut result: IntermediateSearchResults = vec![vec![1, 2, 3, 4, 5]];
+        let mut resolver = Resolver::new(result, None);
+        resolver.limit(3).offset(1).boost(5);
+
+        assert_eq!(resolver.boostval, 5);
+    }
+
+    #[test]
+    fn test_operations_basic() {
+        let result: IntermediateSearchResults = vec![vec![1, 2, 3]];
+        let other: IntermediateSearchResults = vec![vec![2, 3, 4]];
+
+        let mut resolver = Resolver::new(result, None);
+        resolver.and(other);
+        let resolved = resolver.get();
+
+        assert!(!resolved.is_empty());
+    }
+
+    #[test]
+    fn test_resolve_default() {
+        let result: IntermediateSearchResults = vec![vec![1, 2, 3, 4, 5]];
+        let resolved = resolve_default(&result, 3, 0, false);
+        assert_eq!(resolved, vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn test_search_options_builder() {
+        let mut options = SearchOptions::default();
+        options.query = Some("test".to_string());
+        options.limit = Some(10);
+        options.offset = Some(5);
+        options.boost = Some(3);
+
+        assert_eq!(options.query, Some("test".to_string()));
+        assert_eq!(options.limit, Some(10));
+        assert_eq!(options.offset, Some(5));
+        assert_eq!(options.boost, Some(3));
+    }
+
+    #[test]
+    fn test_async_resolver_builder() {
         let result: IntermediateSearchResults = vec![vec![1, 2, 3]];
         let resolver = Resolver::new(result, None);
-        assert_eq!(resolver.result.len(), 1);
-        assert_eq!(resolver.result[0], vec![1, 2, 3]);
+        let async_resolver = AsyncResolver::new(resolver);
+
+        assert_eq!(async_resolver.borrow().result.len(), 1);
     }
 
     #[test]
-    fn test_resolver_limit() {
-        let result: IntermediateSearchResults = vec![vec![1, 2, 3, 4, 5]];
-        let mut resolver = Resolver::new(result, None);
-        resolver.limit(3);
-        
-        let result = resolver.get();
-        assert_eq!(result.len(), 3);
-        assert_eq!(result, vec![1, 2, 3]);
-    }
+    fn test_enricher_basic() {
+        use serde_json::json;
 
-    #[test]
-    fn test_resolver_and() {
-        let result1: IntermediateSearchResults = vec![vec![1, 2, 3]];
-        let result2: IntermediateSearchResults = vec![vec![2, 3, 4]];
-        
-        let mut resolver = Resolver::new(result1, None);
-        resolver.and(result2);
-        
-        let result = resolver.get();
-        assert!(!result.is_empty());
-    }
+        let ids = vec![0, 1, 2];
+        let documents = vec![
+            Some(json!({"id": 1, "name": "test1"})),
+            Some(json!({"id": 2, "name": "test2"})),
+            Some(json!({"id": 3, "name": "test3"})),
+        ];
 
-    #[test]
-    fn test_resolver_or() {
-        let result1: IntermediateSearchResults = vec![vec![1, 2, 3]];
-        let result2: IntermediateSearchResults = vec![vec![4, 5, 6]];
-        
-        let mut resolver = Resolver::new(result1, None);
-        resolver.or(result2);
-        
-        let result = resolver.get();
-        assert_eq!(result.len(), 6);
-    }
+        let enriched = Enricher::apply_enrich(&ids, &documents);
 
-    #[test]
-    fn test_resolver_not() {
-        let result1: IntermediateSearchResults = vec![vec![1, 2, 3, 4, 5]];
-        let result2: IntermediateSearchResults = vec![vec![3, 4]];
-        
-        let mut resolver = Resolver::new(result1, None);
-        resolver.not(result2);
-        
-        let result = resolver.get();
-        assert_eq!(result, vec![1, 2, 5]);
+        assert_eq!(enriched.len(), 3);
+        assert_eq!(enriched[0].id, 0);
+        assert_eq!(enriched[1].id, 1);
+        assert_eq!(enriched[2].id, 2);
+        if let Some(ref doc) = enriched[0].doc {
+            assert_eq!(doc["name"], "test1");
+        }
+        if let Some(ref doc) = enriched[1].doc {
+            assert_eq!(doc["name"], "test2");
+        }
+        if let Some(ref doc) = enriched[2].doc {
+            assert_eq!(doc["name"], "test3");
+        }
     }
 }
