@@ -11,8 +11,11 @@ pub mod metrics;
 pub mod proto;
 pub mod resolver;
 pub mod search;
+pub mod serialize;
+pub mod storage;
 pub mod tokenizer;
 pub mod r#type;
+pub mod async_;
 
 // Re-export charset modules with specific names to avoid conflicts
 pub use charset::{
@@ -37,7 +40,10 @@ pub use keystore::*;
 pub use metrics::*;
 pub use resolver::*;
 pub use search::*;
+pub use serialize::*;
+pub use storage::*;
 pub use tokenizer::*;
+pub use async_::*;
 // Export specific types from r#type module to avoid conflicts
 pub use r#type::{
     IndexOptions, ContextOptions, SearchOptions, FieldOption, TagOption,

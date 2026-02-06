@@ -22,10 +22,10 @@ pub fn intersect_compatible(
 /// 兼容的并集函数
 pub fn union_compatible(
     arrays: &IntermediateSearchResults,
-    limit: usize,
-    offset: usize,
-    sort_by_score: bool,
-    boost: i32,
+    _limit: usize,
+    _offset: usize,
+    _sort_by_score: bool,
+    _boost: i32,
 ) -> IntermediateSearchResults {
     // 直接使用新的核心函数
     core::union(arrays)
@@ -35,10 +35,10 @@ pub fn union_compatible(
 pub fn intersect_union_compatible(
     arrays: &IntermediateSearchResults,
     mandatory: &IntermediateSearchResults,
-    limit: usize,
-    offset: usize,
-    sort_by_score: bool,
-    boost: i32,
+    _limit: usize,
+    _offset: usize,
+    _sort_by_score: bool,
+    _boost: i32,
 ) -> SearchResults {
     // 使用新的核心函数
     core::intersect_union(arrays, mandatory, true)

@@ -1,5 +1,23 @@
 use thiserror::Error;
 
+impl From<Box<bincode::ErrorKind>> for InversearchError {
+    fn from(error: Box<bincode::ErrorKind>) -> Self {
+        InversearchError::BincodeError(error.to_string())
+    }
+}
+
+impl From<serde_json::Error> for InversearchError {
+    fn from(error: serde_json::Error) -> Self {
+        InversearchError::JsonError(error.to_string())
+    }
+}
+
+impl From<tokio::task::JoinError> for InversearchError {
+    fn from(error: tokio::task::JoinError) -> Self {
+        InversearchError::TokioError(error.to_string())
+    }
+}
+
 #[derive(Debug, Error)]
 pub enum InversearchError {
     #[error("Index error: {0}")]
@@ -31,6 +49,18 @@ pub enum InversearchError {
 
     #[error("Deserialization error: {0}")]
     Deserialization(String),
+
+    #[error("Async error: {0}")]
+    AsyncError(String),
+
+    #[error("Serialization error: {0}")]
+    BincodeError(String),
+
+    #[error("JSON error: {0}")]
+    JsonError(String),
+
+    #[error("Async error: {0}")]
+    TokioError(String),
 }
 
 #[derive(Debug, Error)]

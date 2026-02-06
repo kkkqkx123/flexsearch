@@ -2,6 +2,7 @@ use crate::encoder::Encoder;
 use crate::keystore::{KeystoreMap, KeystoreSet, KeystoreArray, DocId, ResolutionSlot};
 use crate::tokenizer::Tokenizer;
 use crate::error::{Result, InversearchError};
+use crate::search::SearchCache;
 use std::collections::HashMap;
 
 pub mod builder;
@@ -43,6 +44,7 @@ pub struct Index {
     pub score: Option<ScoreFn>,
     pub encoder: Encoder,
     pub rtl: bool,
+    pub cache: Option<SearchCache>,
 }
 
 pub type ScoreFn = fn(&[u8], &str, usize, Option<usize>, Option<usize>) -> usize;
@@ -72,6 +74,13 @@ impl Index {
             Register::Set(KeystoreSet::new(8))
         };
 
+        // 初始化缓存（可选）
+        let cache = if options.cache_size.unwrap_or(0) > 0 {
+            Some(SearchCache::new(options.cache_size.unwrap(), options.cache_ttl))
+        } else {
+            None
+        };
+
         Ok(Index {
             map: KeystoreMap::new(8),
             ctx: KeystoreMap::new(8),
@@ -85,6 +94,7 @@ impl Index {
             score: options.score,
             encoder,
             rtl,
+            cache,
         })
     }
 
@@ -131,7 +141,7 @@ impl Index {
         &mut self,
         dupes: &mut HashMap<String, bool>,
         term: &str,
-        score: usize,
+        _score: usize,
         id: DocId,
         append: bool,
         keyword: Option<&str>,
@@ -205,7 +215,7 @@ impl Index {
         }
     }
 
-    fn keystore_hash(&self, id: &str) -> usize {
+    pub fn keystore_hash(&self, id: &str) -> usize {
         let id_str = id.to_string();
         let mut crc: u32 = 0;
         for c in id_str.chars() {
@@ -231,6 +241,30 @@ impl Index {
         crate::search::search(self, options)
     }
 
+    /// 带缓存的搜索
+    pub fn search_cached(&mut self, options: &crate::r#type::SearchOptions) -> Result<crate::search::SearchResult> {
+        let query = options.query.as_deref().unwrap_or("");
+        if query.is_empty() {
+            return Ok(crate::search::SearchResult {
+                results: Vec::new(),
+                total: 0,
+                query: String::new(),
+            });
+        }
+
+        // 首先执行搜索
+        let result = self.search(options)?;
+        
+        // 如果有缓存，缓存结果
+        if let Some(ref mut cache) = self.cache {
+            use crate::search::CacheKeyGenerator;
+            let cache_key = CacheKeyGenerator::generate_search_key(query, options);
+            cache.set(cache_key, result.results.clone());
+        }
+        
+        Ok(result)
+    }
+
     pub fn search_simple(&self, query: &str) -> Result<crate::r#type::SearchResults> {
         let options = crate::r#type::SearchOptions {
             query: Some(query.to_string()),
@@ -238,6 +272,18 @@ impl Index {
         };
         let result = self.search(&options)?;
         Ok(result.results)
+    }
+
+    /// 获取缓存统计信息
+    pub fn cache_stats(&self) -> Option<crate::search::CacheStats> {
+        self.cache.as_ref().map(|cache| cache.stats())
+    }
+
+    /// 清空缓存
+    pub fn clear_cache(&mut self) {
+        if let Some(ref mut cache) = self.cache {
+            cache.clear();
+        }
     }
 }
 
@@ -252,6 +298,8 @@ pub struct IndexOptions {
     pub score: Option<ScoreFn>,
     pub encoder: Option<crate::EncoderOptions>,
     pub rtl: Option<bool>,
+    pub cache_size: Option<usize>,
+    pub cache_ttl: Option<std::time::Duration>,
 }
 
 impl Default for IndexOptions {
@@ -266,6 +314,8 @@ impl Default for IndexOptions {
             score: None,
             encoder: None,
             rtl: None,
+            cache_size: Some(1000),  // 默认启用缓存，大小1000
+            cache_ttl: None,         // 默认无过期时间
         }
     }
 }
