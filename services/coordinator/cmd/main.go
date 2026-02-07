@@ -152,7 +152,7 @@ func initializeEngines(cfg *config.Config, logger *util.Logger) map[string]engin
 	}
 
 	if cfg.Engines.Vector.Enabled {
-		vectorClient := engine.NewVectorClient(&engine.ClientConfig{
+		vectorClient, err := engine.NewVectorClient(&engine.ClientConfig{
 			Host:       cfg.Engines.Vector.Host,
 			Port:       cfg.Engines.Vector.Port,
 			Timeout:    cfg.Engines.Vector.Timeout,
@@ -166,7 +166,9 @@ func initializeEngines(cfg *config.Config, logger *util.Logger) map[string]engin
 			Hybrid:    false,
 			Alpha:     0.5,
 		}, logger)
-		if err := vectorClient.Connect(context.Background()); err != nil {
+		if err != nil {
+			logger.Errorf("Failed to create Vector client: %v", err)
+		} else if err := vectorClient.Connect(context.Background()); err != nil {
 			logger.Warnf("Failed to connect to Vector: %v", err)
 		} else {
 			engines["vector"] = vectorClient

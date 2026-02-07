@@ -1,0 +1,9 @@
+go 1.23.0
+
+use (
+	./services/api-gateway
+	./services/coordinator
+	./services/shared
+)
+
+replace github.com/flexsearch/shared v0.1.0 => ./services/shared

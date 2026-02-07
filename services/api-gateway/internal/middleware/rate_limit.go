@@ -11,34 +11,28 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// EnhancedRateLimitConfig holds the configuration for enhanced rate limiting
-type EnhancedRateLimitConfig struct {
+type RateLimitConfig struct {
 	Enabled       bool
 	DefaultLimit  int
 	DefaultBurst  int
 	DefaultWindow string
 	ByUser        bool
 	ByIP          bool
-	HeaderBased   bool // Rate limit based on custom header
+	HeaderBased   bool
 	HeaderName    string
-	TierHeader    string // Header to determine user tier
+	TierHeader    string
 }
 
-// EnhancedRateLimitMiddleware creates a new enhanced rate limit middleware
-func EnhancedRateLimitMiddleware(limiter *util.EnhancedRateLimiter, config EnhancedRateLimitConfig) gin.HandlerFunc {
+func RateLimitMiddleware(limiter *util.RateLimiter, config RateLimitConfig) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if !config.Enabled {
 			c.Next()
 			return
 		}
 
-		// Determine the rate limiting key
 		key := determineRateLimitKey(c, config)
-
-		// Determine user tier
 		tier := determineUserTier(c, config)
 
-		// Check rate limit
 		allowed, err := limiter.Allow(c.Request.Context(), key, tier)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
@@ -83,8 +77,7 @@ func EnhancedRateLimitMiddleware(limiter *util.EnhancedRateLimiter, config Enhan
 	}
 }
 
-// determineRateLimitKey determines the rate limiting key based on configuration
-func determineRateLimitKey(c *gin.Context, config EnhancedRateLimitConfig) string {
+func determineRateLimitKey(c *gin.Context, config RateLimitConfig) string {
 	if config.HeaderBased && config.HeaderName != "" {
 		if headerValue := c.GetHeader(config.HeaderName); headerValue != "" {
 			return fmt.Sprintf("header:%s:%s", config.HeaderName, headerValue)
@@ -104,9 +97,7 @@ func determineRateLimitKey(c *gin.Context, config EnhancedRateLimitConfig) strin
 	return "global"
 }
 
-// determineUserTier determines the user's rate limiting tier
-func determineUserTier(c *gin.Context, config EnhancedRateLimitConfig) util.RateLimitTier {
-	// Check if tier is specified in header
+func determineUserTier(c *gin.Context, config RateLimitConfig) util.RateLimitTier {
 	if config.TierHeader != "" {
 		if tierStr := c.GetHeader(config.TierHeader); tierStr != "" {
 			tier := util.RateLimitTier(strings.ToLower(tierStr))
@@ -116,7 +107,6 @@ func determineUserTier(c *gin.Context, config EnhancedRateLimitConfig) util.Rate
 		}
 	}
 
-	// Check if tier is specified in user context (from JWT claims)
 	if userTier := c.GetString("rate_limit_tier"); userTier != "" {
 		tier := util.RateLimitTier(strings.ToLower(userTier))
 		if isValidTier(tier) {
@@ -124,7 +114,6 @@ func determineUserTier(c *gin.Context, config EnhancedRateLimitConfig) util.Rate
 		}
 	}
 
-	// Check if user has premium role
 	if roles := c.GetStringSlice("user_roles"); len(roles) > 0 {
 		for _, role := range roles {
 			if strings.Contains(strings.ToLower(role), "enterprise") {
@@ -137,11 +126,9 @@ func determineUserTier(c *gin.Context, config EnhancedRateLimitConfig) util.Rate
 		}
 	}
 
-	// Default to free tier
 	return util.TierFree
 }
 
-// isValidTier checks if the tier is valid
 func isValidTier(tier util.RateLimitTier) bool {
 	switch tier {
 	case util.TierFree, util.TierBasic, util.TierPremium, util.TierEnterprise:
@@ -151,10 +138,7 @@ func isValidTier(tier util.RateLimitTier) bool {
 	}
 }
 
-// getRemainingTokens calculates remaining tokens (simplified)
-func getRemainingTokens(ctx context.Context, limiter *util.EnhancedRateLimiter, key string, tier util.RateLimitTier) int {
-	// This is a simplified implementation
-	// In a real implementation, you would get the actual remaining tokens from the rate limiter
+func getRemainingTokens(ctx context.Context, limiter *util.RateLimiter, key string, tier util.RateLimitTier) int {
 	tierConfig, exists := limiter.GetConfig().Tiers[tier]
 	if !exists {
 		tierConfig = util.TierConfig{
@@ -163,11 +147,9 @@ func getRemainingTokens(ctx context.Context, limiter *util.EnhancedRateLimiter, 
 		}
 	}
 
-	// Return a reasonable estimate (in real implementation, get from Redis)
-	return tierConfig.Burst / 2 // Placeholder
+	return tierConfig.Burst / 2
 }
 
-// getResetTime calculates the reset time for rate limit window
 func getResetTime(window time.Duration) string {
 	resetTime := time.Now().Add(window).Unix()
 	return fmt.Sprintf("%d", resetTime)

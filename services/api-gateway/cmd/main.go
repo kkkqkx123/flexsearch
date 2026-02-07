@@ -47,8 +47,8 @@ func main() {
 		logger.Warn("Failed to initialize tracing", zap.Error(err))
 	}
 	defer func() {
-		if err := shutdownTracing(context.Background()); err != nil {
-			logger.Error("Failed to shutdown tracing", zap.Error(err))
+		if shutdownErr := shutdownTracing(context.Background()); shutdownErr != nil {
+			logger.Error("Failed to shutdown tracing", zap.Error(shutdownErr))
 		}
 	}()
 
@@ -63,17 +63,17 @@ func main() {
 	defer redisClient.Close()
 
 	ctx := context.Background()
-	if err := redisClient.Ping(ctx).Err(); err != nil {
-		logger.Error("Failed to connect to Redis", zap.Error(err))
+	if pingErr := redisClient.Ping(ctx).Err(); pingErr != nil {
+		logger.Error("Failed to connect to Redis", zap.Error(pingErr))
 	} else {
 		logger.Info("Connected to Redis successfully")
 	}
 
 	// Use enhanced rate limiter with burst capacity and tiers
-	enhancedRateLimitConfig := util.DefaultEnhancedRateLimitConfig()
-	enhancedRateLimitConfig.Enabled = cfg.RateLimit.Enabled
-	enhancedRateLimitConfig.DefaultLimit = cfg.RateLimit.DefaultLimit
-	rateLimiter := util.NewEnhancedRateLimiter(redisClient, enhancedRateLimitConfig)
+	rateLimitConfig := util.DefaultRateLimitConfig()
+	rateLimitConfig.Enabled = cfg.RateLimit.Enabled
+	rateLimitConfig.DefaultLimit = cfg.RateLimit.DefaultLimit
+	rateLimiter := util.NewRateLimiter(redisClient, rateLimitConfig)
 
 	coordinatorClient, err := client.NewCircuitBreakerCoordinatorClient(&cfg.Coordinator)
 	if err != nil {
@@ -106,10 +106,10 @@ func main() {
 	}
 
 	if cfg.RateLimit.Enabled {
-		router.Use(middleware.EnhancedRateLimitMiddleware(rateLimiter, middleware.EnhancedRateLimitConfig{
+		router.Use(middleware.RateLimitMiddleware(rateLimiter, middleware.RateLimitConfig{
 			Enabled:       cfg.RateLimit.Enabled,
 			DefaultLimit:  cfg.RateLimit.DefaultLimit,
-			DefaultBurst:  20, // Allow burst of 20 requests
+			DefaultBurst:  20,
 			DefaultWindow: "1m",
 			ByUser:        cfg.RateLimit.ByUser,
 			ByIP:          cfg.RateLimit.ByIP,

@@ -30,6 +30,21 @@ type LogConfig struct {
 	Output string `mapstructure:"output"`
 }
 
+type RedisConfig struct {
+	Host         string `mapstructure:"host"`
+	Port         int    `mapstructure:"port"`
+	Password     string `mapstructure:"password"`
+	DB           int    `mapstructure:"db"`
+	PoolSize     int    `mapstructure:"pool_size"`
+	MinIdleConns int    `mapstructure:"min_idle_conns"`
+	MaxRetries   int    `mapstructure:"max_retries"`
+	DialTimeout  int    `mapstructure:"dial_timeout"`
+	ReadTimeout  int    `mapstructure:"read_timeout"`
+	WriteTimeout int    `mapstructure:"write_timeout"`
+	PoolTimeout  int    `mapstructure:"pool_timeout"`
+	IdleTimeout  int    `mapstructure:"idle_timeout"`
+}
+
 type CoordinatorConfig struct {
 	Address string `mapstructure:"address"`
 	Timeout int    `mapstructure:"timeout"`

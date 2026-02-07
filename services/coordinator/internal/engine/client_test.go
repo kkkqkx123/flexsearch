@@ -171,7 +171,10 @@ func TestVectorClient(t *testing.T) {
 		Alpha:     0.5,
 	}
 
-	client := NewVectorClient(config, vectorConfig, logger)
+	client, err := NewVectorClient(config, vectorConfig, logger)
+	if err != nil {
+		t.Fatalf("Failed to create Vector client: %v", err)
+	}
 
 	if client.GetName() != "vector" {
 		t.Errorf("Expected name to be vector, got %s", client.GetName())

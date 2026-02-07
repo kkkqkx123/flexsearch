@@ -4,8 +4,9 @@ import (
 	"context"
 	"time"
 
-	"github.com/flexsearch/metrics"
-	"github.com/flexsearch/redis"
+	"github.com/flexsearch/shared/metrics"
+	"github.com/flexsearch/shared/redis"
+	goRedis "github.com/redis/go-redis/v9"
 )
 
 type RedisClient struct {
@@ -39,7 +40,7 @@ func (r *RedisClient) Get(ctx context.Context, key string) (string, error) {
 	duration := time.Since(start).Seconds()
 
 	status := "success"
-	if err != nil && err != redis.Nil {
+	if err != nil && err != goRedis.Nil {
 		status = "error"
 	}
 
@@ -117,7 +118,7 @@ func (r *RedisClient) TTL(ctx context.Context, key string) (time.Duration, error
 	return result, err
 }
 
-func (r *RedisClient) ZAdd(ctx context.Context, key string, members ...redis.Z) error {
+func (r *RedisClient) ZAdd(ctx context.Context, key string, members ...goRedis.Z) error {
 	start := time.Now()
 	err := r.client.ZAdd(ctx, key, members...).Err()
 	duration := time.Since(start).Seconds()
@@ -159,7 +160,7 @@ func (r *RedisClient) ZCount(ctx context.Context, key, min, max string) (int64, 
 	return result, err
 }
 
-func (r *RedisClient) ZRevRangeByScoreWithScores(ctx context.Context, key string, opt *redis.ZRangeBy) ([]redis.Z, error) {
+func (r *RedisClient) ZRevRangeByScoreWithScores(ctx context.Context, key string, opt *goRedis.ZRangeBy) ([]goRedis.Z, error) {
 	start := time.Now()
 	result, err := r.client.ZRevRangeByScoreWithScores(ctx, key, opt).Result()
 	duration := time.Since(start).Seconds()
@@ -216,5 +217,5 @@ func (r *RedisClient) EvalSha(ctx context.Context, sha1 string, keys []string, a
 }
 
 func (r *RedisClient) Client() *redis.Client {
-	return r.client.Client
+	return r.client
 }
