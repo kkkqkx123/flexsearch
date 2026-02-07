@@ -44,10 +44,13 @@ func RateLimitMiddleware(limiter *util.RateLimiter, config RateLimitConfig) gin.
 		}
 
 		if !allowed {
-			tierConfig := util.TierConfig{
-				Limit:  limiter.GetConfig().DefaultLimit,
-				Burst:  limiter.GetConfig().DefaultBurst,
-				Window: limiter.GetConfig().DefaultWindow,
+			tierConfig, exists := limiter.GetConfig().Tiers[tier]
+			if !exists {
+				tierConfig = util.TierConfig{
+					Limit:  limiter.GetConfig().DefaultLimit,
+					Burst:  limiter.GetConfig().DefaultBurst,
+					Window: limiter.GetConfig().DefaultWindow,
+				}
 			}
 
 			c.JSON(http.StatusTooManyRequests, gin.H{
@@ -62,10 +65,13 @@ func RateLimitMiddleware(limiter *util.RateLimiter, config RateLimitConfig) gin.
 			return
 		}
 
-		tierConfig := util.TierConfig{
-			Limit:  limiter.GetConfig().DefaultLimit,
-			Burst:  limiter.GetConfig().DefaultBurst,
-			Window: limiter.GetConfig().DefaultWindow,
+		tierConfig, exists := limiter.GetConfig().Tiers[tier]
+		if !exists {
+			tierConfig = util.TierConfig{
+				Limit:  limiter.GetConfig().DefaultLimit,
+				Burst:  limiter.GetConfig().DefaultBurst,
+				Window: limiter.GetConfig().DefaultWindow,
+			}
 		}
 
 		c.Header("X-RateLimit-Limit", fmt.Sprintf("%d", tierConfig.Limit))
@@ -142,12 +148,30 @@ func getRemainingTokens(ctx context.Context, limiter *util.RateLimiter, key stri
 	tierConfig, exists := limiter.GetConfig().Tiers[tier]
 	if !exists {
 		tierConfig = util.TierConfig{
-			Limit: limiter.GetConfig().DefaultLimit,
 			Burst: limiter.GetConfig().DefaultBurst,
 		}
 	}
 
-	return tierConfig.Burst / 2
+	stats, err := limiter.GetStats(ctx, key)
+	if err != nil || !stats["exists"].(bool) {
+		return tierConfig.Burst
+	}
+
+	value, ok := stats["value"].(string)
+	if !ok || value == "" {
+		return tierConfig.Burst
+	}
+
+	parts := []byte(value)
+	if len(parts) >= 16 {
+		tokens := int(int64(parts[0]) | int64(parts[1])<<8 | int64(parts[2])<<16 | int64(parts[3])<<24)
+		if tokens < 0 {
+			tokens = 0
+		}
+		return tokens
+	}
+
+	return tierConfig.Burst
 }
 
 func getResetTime(window time.Duration) string {
