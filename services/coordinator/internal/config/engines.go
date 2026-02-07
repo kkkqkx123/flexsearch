@@ -1,6 +1,9 @@
 package config
 
-import "time"
+import (
+	"strconv"
+	"time"
+)
 
 type EnginesConfig struct {
 	FlexSearch FlexSearchConfig `mapstructure:"flexsearch"`
@@ -52,13 +55,13 @@ func (e *EnginesConfig) GetVectorAddress() string {
 }
 
 func (f *FlexSearchConfig) Address() string {
-	return f.Host + ":" + string(rune(f.Port))
+	return f.Host + ":" + strconv.Itoa(f.Port)
 }
 
 func (b *BM25Config) Address() string {
-	return b.Host + ":" + string(rune(b.Port))
+	return b.Host + ":" + strconv.Itoa(b.Port)
 }
 
 func (v *VectorConfig) Address() string {
-	return v.Host + ":" + string(rune(v.Port))
+	return v.Host + ":" + strconv.Itoa(v.Port)
 }

@@ -8,15 +8,19 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
+	"github.com/flexsearch/coordinator/internal/cache"
 	"github.com/flexsearch/coordinator/internal/config"
+	"github.com/flexsearch/coordinator/internal/engine"
+	"github.com/flexsearch/coordinator/internal/merger"
+	"github.com/flexsearch/coordinator/internal/router"
 	coordinatorServer "github.com/flexsearch/coordinator/internal/server"
+	"github.com/flexsearch/coordinator/internal/service"
 	"github.com/flexsearch/coordinator/internal/util"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
-	"google.golang.org/grpc/health/grpc_health_v1"
+	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/reflection"
 )
 
@@ -43,7 +47,43 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	grpcServer := setupGRPCServer(cfg, logger)
+	redisCache, err := cache.NewRedisCache(&cache.CacheConfig{
+		Enabled:    cfg.Cache.Enabled,
+		Host:       cfg.Redis.Host,
+		Port:       cfg.Redis.Port,
+		Password:   cfg.Redis.Password,
+		DB:         cfg.Redis.DB,
+		PoolSize:   cfg.Redis.PoolSize,
+		DefaultTTL: cfg.Cache.DefaultTTL,
+	}, logger)
+	if err != nil {
+		logger.Warnf("Redis cache initialization failed: %v", err)
+	}
+
+	engines := initializeEngines(cfg, logger)
+
+	r := router.NewRouter(logger)
+	optimizer := router.NewOptimizer(logger)
+
+	mergerConfig := &merger.MergerConfig{
+		Strategy: "rrf",
+		RRFK:     60,
+		TopK:     100,
+	}
+	resultMerger := merger.NewMerger("rrf", mergerConfig, logger)
+
+	searchService := service.NewSearchService(&service.SearchServiceConfig{
+		Config:    cfg,
+		Logger:    logger,
+		Cache:     redisCache,
+		Router:    r,
+		Optimizer: optimizer,
+		Merger:    resultMerger,
+		Engines:   engines,
+		Metrics:   metrics,
+	})
+
+	grpcServer := setupGRPCServer(cfg, logger, searchService)
 	metricsServer := setupMetricsServer(cfg, metrics)
 
 	if cfg.Metrics.Enabled {
@@ -73,7 +113,71 @@ func main() {
 	waitForShutdown(ctx, cancel, cfg, grpcServer, metricsServer, logger)
 }
 
-func setupGRPCServer(cfg *config.Config, logger *util.Logger) *grpc.Server {
+func initializeEngines(cfg *config.Config, logger *util.Logger) map[string]engine.EngineClient {
+	engines := make(map[string]engine.EngineClient)
+
+	if cfg.Engines.FlexSearch.Enabled {
+		flexClient := engine.NewFlexSearchClient(&engine.ClientConfig{
+			Host:       cfg.Engines.FlexSearch.Host,
+			Port:       cfg.Engines.FlexSearch.Port,
+			Timeout:    cfg.Engines.FlexSearch.Timeout,
+			MaxRetries: cfg.Engines.FlexSearch.MaxRetries,
+			PoolSize:   cfg.Engines.FlexSearch.PoolSize,
+		}, logger)
+		if err := flexClient.Connect(context.Background()); err != nil {
+			logger.Warnf("Failed to connect to FlexSearch: %v", err)
+		} else {
+			engines["flexsearch"] = flexClient
+		}
+	}
+
+	if cfg.Engines.BM25.Enabled {
+		bm25Client := engine.NewBM25Client(&engine.ClientConfig{
+			Host:       cfg.Engines.BM25.Host,
+			Port:       cfg.Engines.BM25.Port,
+			Timeout:    cfg.Engines.BM25.Timeout,
+			MaxRetries: cfg.Engines.BM25.MaxRetries,
+			PoolSize:   cfg.Engines.BM25.PoolSize,
+		}, &engine.BM25EngineConfig{
+			K1:        cfg.Engines.BM25.K1,
+			B:         cfg.Engines.BM25.B,
+			MinLength: 2,
+			MaxLength: 100,
+		}, logger)
+		if err := bm25Client.Connect(context.Background()); err != nil {
+			logger.Warnf("Failed to connect to BM25: %v", err)
+		} else {
+			engines["bm25"] = bm25Client
+		}
+	}
+
+	if cfg.Engines.Vector.Enabled {
+		vectorClient := engine.NewVectorClient(&engine.ClientConfig{
+			Host:       cfg.Engines.Vector.Host,
+			Port:       cfg.Engines.Vector.Port,
+			Timeout:    cfg.Engines.Vector.Timeout,
+			MaxRetries: cfg.Engines.Vector.MaxRetries,
+			PoolSize:   cfg.Engines.Vector.PoolSize,
+		}, &engine.VectorEngineConfig{
+			Model:     cfg.Engines.Vector.Model,
+			Dimension: cfg.Engines.Vector.Dimension,
+			Threshold: 0.7,
+			TopK:      10,
+			Hybrid:    false,
+			Alpha:     0.5,
+		}, logger)
+		if err := vectorClient.Connect(context.Background()); err != nil {
+			logger.Warnf("Failed to connect to Vector: %v", err)
+		} else {
+			engines["vector"] = vectorClient
+		}
+	}
+
+	logger.Infof("Initialized %d engines", len(engines))
+	return engines
+}
+
+func setupGRPCServer(cfg *config.Config, logger *util.Logger, searchService *service.SearchService) *grpc.Server {
 	opts := []grpc.ServerOption{
 		grpc.MaxRecvMsgSize(cfg.GRPC.MaxRecvMsgSize),
 		grpc.MaxSendMsgSize(cfg.GRPC.MaxSendMsgSize),
@@ -81,12 +185,11 @@ func setupGRPCServer(cfg *config.Config, logger *util.Logger) *grpc.Server {
 
 	server := grpc.NewServer(opts...)
 
-	coordinator := coordinatorServer.NewCoordinatorServer(logger)
+	coordinatorServer.NewCoordinatorServer(logger, searchService)
 
 	healthServer := health.NewServer()
-	healthServer.SetServingStatus("", grpc_health_v1.HealthCheckResponse_SERVING)
-	healthServer.SetServingStatus(serviceName, grpc_health_v1.HealthCheckResponse_SERVING)
-	grpc_health_v1.RegisterHealthCheckServer(server, healthServer)
+	healthServer.SetServingStatus("", healthpb.HealthCheckResponse_SERVING)
+	healthServer.SetServingStatus(serviceName, healthpb.HealthCheckResponse_SERVING)
 
 	reflection.Register(server)
 

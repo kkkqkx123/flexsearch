@@ -9,6 +9,7 @@ use crate::error::Result;
 use serde::{Serialize, Deserialize};
 use std::collections::HashMap;
 use serde_json::Value;
+use bincode;
 
 /// Document 数据导出结构
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -278,6 +279,38 @@ impl Document {
         Ok(document)
     }
 
+    /// 序列化为二进制数据（高性能）
+    pub fn to_binary(&self, config: &SerializeConfig) -> Result<Vec<u8>> {
+        let data = self.export(config)?;
+        let serialized = bincode::serialize(&data)?;
+        Ok(serialized)
+    }
+
+    /// 从二进制数据反序列化
+    pub fn from_binary(data: &[u8], config: &SerializeConfig) -> Result<Document> {
+        let data: DocumentExportData = bincode::deserialize(data)?;
+        
+        // 根据导出数据创建 DocumentConfig
+        let mut doc_config = crate::document::DocumentConfig::new();
+        
+        // 添加字段配置
+        for field_data in &data.fields {
+            let field_config = crate::document::FieldConfig::new(&field_data.name);
+            doc_config = doc_config.add_field(field_config);
+        }
+        
+        // 启用存储（如果导出数据包含存储）
+        if data.store.is_some() {
+            doc_config = doc_config.with_store();
+        }
+        
+        // 创建新的 Document 实例
+        let mut document = Document::new(doc_config)?;
+        document.import(data, config)?;
+        
+        Ok(document)
+    }
+
     /// 获取字段的可变引用
     fn field_mut(&mut self, name: &str) -> Option<&mut Field> {
         if let Some(&idx) = self.name_to_index.get(name) {
@@ -335,5 +368,54 @@ mod tests {
         assert_eq!(export_data.document_info.field_count, 1);
         assert!(export_data.document_info.store_enabled);
         assert!(!export_data.document_info.tag_enabled);
+    }
+
+    #[test]
+    fn test_document_binary_export_import() {
+        let config = DocumentConfig::new()
+            .add_field(FieldConfig::new("title"))
+            .add_field(FieldConfig::new("content"))
+            .with_store();
+
+        let mut document = Document::new(config).unwrap();
+        document.add(1, &json!({"title": "Hello World", "content": "Test content"})).unwrap();
+        document.add(2, &json!({"title": "Rust Programming", "content": "Another test"})).unwrap();
+
+        // 导出为二进制
+        let serialize_config = SerializeConfig::default();
+        let binary_data = document.to_binary(&serialize_config).unwrap();
+        
+        // 验证二进制数据比 JSON 更紧凑
+        let json_str = document.to_json(&serialize_config).unwrap();
+        assert!(binary_data.len() < json_str.len());
+        
+        // 从二进制导入
+        let imported_document = Document::from_binary(&binary_data, &serialize_config).unwrap();
+        
+        // 验证导入结果
+        assert!(imported_document.contains(1));
+        assert!(imported_document.contains(2));
+        
+        // 验证存储的文档
+        let doc1 = imported_document.get(1);
+        assert!(doc1.is_some());
+        assert_eq!(doc1.unwrap()["title"], "Hello World");
+    }
+
+    #[test]
+    fn test_document_binary_empty() {
+        let config = DocumentConfig::new()
+            .add_field(FieldConfig::new("title"));
+
+        let document = Document::new(config).unwrap();
+        let serialize_config = SerializeConfig::default();
+        
+        // 导出空文档为二进制
+        let binary_data = document.to_binary(&serialize_config).unwrap();
+        assert!(!binary_data.is_empty());
+        
+        // 从二进制导入
+        let imported_document = Document::from_binary(&binary_data, &serialize_config).unwrap();
+        assert!(!imported_document.contains(1));
     }
 }

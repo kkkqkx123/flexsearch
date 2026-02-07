@@ -1,12 +1,11 @@
 package util
 
 import (
+	"sync"
 	"time"
 
-	"github.com/flexsearch/metrics"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"sync"
 )
 
 type Metrics struct {
@@ -16,10 +15,13 @@ type Metrics struct {
 	queryLatency         *prometheus.HistogramVec
 	engineLatency        *prometheus.HistogramVec
 	mergerLatency        *prometheus.HistogramVec
+	cacheHits            prometheus.Counter
+	cacheMisses          prometheus.Counter
+	searchRequestsTotal   *prometheus.CounterVec
+	searchResultsTotal    *prometheus.CounterVec
+	searchErrorsTotal     *prometheus.CounterVec
 	startTime            time.Time
 	mu                   sync.RWMutex
-	redisMetrics         *metrics.RedisMetrics
-	searchMetrics        *metrics.SearchMetrics
 }
 
 func NewMetrics(namespace string) *Metrics {
@@ -75,9 +77,45 @@ func NewMetrics(namespace string) *Metrics {
 			},
 			[]string{"strategy"},
 		),
-		startTime:    time.Now(),
-		redisMetrics: metrics.NewRedisMetrics("coordinator", "default"),
-		searchMetrics: metrics.NewSearchMetrics("coordinator"),
+		cacheHits: promauto.NewCounter(
+			prometheus.CounterOpts{
+				Namespace: namespace,
+				Name:      "cache_hits_total",
+				Help:      "Total number of cache hits",
+			},
+		),
+		cacheMisses: promauto.NewCounter(
+			prometheus.CounterOpts{
+				Namespace: namespace,
+				Name:      "cache_misses_total",
+				Help:      "Total number of cache misses",
+			},
+		),
+		searchRequestsTotal: promauto.NewCounterVec(
+			prometheus.CounterOpts{
+				Namespace: namespace,
+				Name:      "search_requests_total",
+				Help:      "Total number of search requests",
+			},
+			[]string{"engine"},
+		),
+		searchResultsTotal: promauto.NewCounterVec(
+			prometheus.CounterOpts{
+				Namespace: namespace,
+				Name:      "search_results_total",
+				Help:      "Total number of search results",
+			},
+			[]string{"engine"},
+		),
+		searchErrorsTotal: promauto.NewCounterVec(
+			prometheus.CounterOpts{
+				Namespace: namespace,
+				Name:      "search_errors_total",
+				Help:      "Total number of search errors",
+			},
+			[]string{"engine", "error_type"},
+		),
+		startTime: time.Now(),
 	}
 
 	return m
@@ -105,15 +143,14 @@ func (m *Metrics) RecordQueryLatency(queryType string, duration time.Duration) {
 
 func (m *Metrics) RecordEngineLatency(engine, operation string, duration time.Duration) {
 	m.engineLatency.WithLabelValues(engine, operation).Observe(duration.Seconds())
-	m.searchMetrics.RecordDuration(engine, duration.Seconds())
 }
 
-func (m *Metrics) IncrementCacheHit(cacheType string) {
-	m.redisMetrics.RecordCacheHit(cacheType)
+func (m *Metrics) RecordCacheHit() {
+	m.cacheHits.Inc()
 }
 
-func (m *Metrics) IncrementCacheMiss(cacheType string) {
-	m.redisMetrics.RecordCacheMiss(cacheType)
+func (m *Metrics) RecordCacheMiss() {
+	m.cacheMisses.Inc()
 }
 
 func (m *Metrics) RecordMergerLatency(strategy string, duration time.Duration) {
@@ -124,30 +161,18 @@ func (m *Metrics) GetUptime() time.Duration {
 	return time.Since(m.startTime)
 }
 
-func (m *Metrics) RecordRedisOperation(operation, status string, duration float64) {
-	m.redisMetrics.RecordOperation(operation, status, duration)
+func (m *Metrics) RecordSearchDuration(duration float64) {
+	m.queryLatency.WithLabelValues("search").Observe(duration / 1000.0)
 }
 
-func (m *Metrics) RecordRedisConnection(active, idle int) {
-	m.redisMetrics.RecordConnection(active, idle)
+func (m *Metrics) RecordSearchResults(count int) {
+	m.searchResultsTotal.WithLabelValues("coordinator").Add(float64(count))
 }
 
 func (m *Metrics) RecordSearchRequest(engine string) {
-	m.searchMetrics.RecordRequest(engine)
-}
-
-func (m *Metrics) RecordSearchResults(engine string, count float64) {
-	m.searchMetrics.RecordResults(engine, count)
+	m.searchRequestsTotal.WithLabelValues(engine).Inc()
 }
 
 func (m *Metrics) RecordSearchError(engine, errorType string) {
-	m.searchMetrics.RecordError(engine, errorType)
-}
-
-func (m *Metrics) RedisMetrics() *metrics.RedisMetrics {
-	return m.redisMetrics
-}
-
-func (m *Metrics) SearchMetrics() *metrics.SearchMetrics {
-	return m.searchMetrics
+	m.searchErrorsTotal.WithLabelValues(engine, errorType).Inc()
 }

@@ -7,6 +7,7 @@ use crate::Index;
 use crate::error::Result;
 use serde::{Serialize, Deserialize};
 use std::collections::HashMap;
+use bincode;
 
 const CHUNK_SIZE_REG: usize = 250000;
 const CHUNK_SIZE_MAP: usize = 5000;
@@ -97,7 +98,7 @@ impl ChunkedSerializer {
                 chunk_index,
                 total_chunks,
                 data_type: ChunkDataType::Registry,
-                data: serde_json::to_vec(chunk)?,
+                data: bincode::serialize(chunk)?,
             };
             callback(chunk_data)?;
         }
@@ -126,7 +127,7 @@ impl ChunkedSerializer {
                 chunk_index,
                 total_chunks,
                 data_type: ChunkDataType::MainIndex,
-                data: serde_json::to_vec(chunk)?,
+                data: bincode::serialize(chunk)?,
             };
             callback(chunk_data)?;
         }
@@ -155,7 +156,7 @@ impl ChunkedSerializer {
                 chunk_index,
                 total_chunks,
                 data_type: ChunkDataType::ContextIndex,
-                data: serde_json::to_vec(chunk)?,
+                data: bincode::serialize(chunk)?,
             };
             callback(chunk_data)?;
         }
@@ -175,7 +176,7 @@ impl ChunkedSerializer {
         while let Some(chunk) = provider()? {
             match chunk.data_type {
                 ChunkDataType::Registry => {
-                    let items: Vec<String> = serde_json::from_slice(&chunk.data)?;
+                    let items: Vec<String> = bincode::deserialize(&chunk.data)?;
                     if registry_data.is_none() {
                         registry_data = Some(crate::serialize::RegistryData::Set(Vec::new()));
                     }
@@ -188,13 +189,13 @@ impl ChunkedSerializer {
                     }
                 },
                 ChunkDataType::MainIndex => {
-                    let items: Vec<(String, Vec<u64>)> = serde_json::from_slice(&chunk.data)?;
+                    let items: Vec<(String, Vec<u64>)> = bincode::deserialize(&chunk.data)?;
                     for (key, value) in items {
                         main_index_data.insert(key, value);
                     }
                 },
                 ChunkDataType::ContextIndex => {
-                    let items: Vec<(String, HashMap<String, Vec<u64>>)> = serde_json::from_slice(&chunk.data)?;
+                    let items: Vec<(String, HashMap<String, Vec<u64>>)> = bincode::deserialize(&chunk.data)?;
                     for (key, value) in items {
                         context_index_data.insert(key, value);
                     }
